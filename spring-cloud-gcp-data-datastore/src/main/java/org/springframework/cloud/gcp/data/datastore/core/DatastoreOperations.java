@@ -16,8 +16,10 @@
 
 package org.springframework.cloud.gcp.data.datastore.core;
 
+import java.util.function.Function;
+
 import com.google.cloud.datastore.Entity;
-import com.google.cloud.datastore.GqlQuery;
+import com.google.cloud.datastore.Query;
 
 /**
  * An interface of operations that can be done with Cloud Datastore.
@@ -122,14 +124,14 @@ public interface DatastoreOperations {
 	<T> Iterable<T> findAllById(Iterable<?> ids, Class<T> entityClass);
 
 	/**
-	 * Finds objects by using a GQL statement.
-	 * @param gqlQuery the GQL query to execute.
+	 * Finds objects by using a Cloud Datastore query.
+	 * @param query the query to execute.
 	 * @param entityClass the type of object to retrieve.
 	 * @param <T> the type of object to retrieve.
 	 * @return a list of the objects found. If no keys could be found the list will be
 	 * empty.
 	 */
-	<T> Iterable<T> query(GqlQuery<Entity> gqlQuery, Class<T> entityClass);
+	<T> Iterable<T> query(Query<Entity> query, Class<T> entityClass);
 
 	/**
 	 * Get all the entities of the given domain type.
@@ -150,4 +152,13 @@ public interface DatastoreOperations {
 	 * @return true if the given ID refers to an existing entity. False otherwise.
 	 */
 	<T> boolean existsById(Object id, Class<T> entityClass);
+
+	/**
+	 * Performs multiple read and write operations in a single transaction.
+	 * @param operations the function that uses {@link DatastoreOperations}
+	 * to perform operations in a transaction.
+	 * @param <A> the final return type of the operations.
+	 * @return the final result of the transaction.
+	 */
+	<A> A performTransaction(Function<DatastoreOperations, A> operations);
 }
