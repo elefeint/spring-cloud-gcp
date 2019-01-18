@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.admin;
@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 
 import com.google.cloud.spanner.Database;
 import com.google.cloud.spanner.DatabaseAdminClient;
@@ -33,6 +34,9 @@ import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerDataExcept
 import org.springframework.util.Assert;
 
 /**
+ * Template for performing many operations to a Spanner database including generating hierarchy schemas and creating
+ * and deleting tables.
+ *
  * @author Chengyuan Zhao
  * @author Balint Pato
  *
@@ -82,25 +86,29 @@ public class SpannerDatabaseAdminTemplate {
 	 * Execute the given DDL strings in order and creates the database if it does not
 	 * exist.
 	 * @param ddlStrings the DDL strings
-	 * @param createDatabaseIfNotExists Has no effect if the database already exists.
-	 * Otherwise, if True then the database is created and the DDL strings are executed;
-	 * the DDL is not executed if False.
+	 * @param createDatabase if {@code true}, then the database is created at the same
+	 * time as the tables using the DDL strings. if {@code false}, then the database must
+	 * already exist.
 	 */
 	public void executeDdlStrings(Iterable<String> ddlStrings,
-			boolean createDatabaseIfNotExists) {
-		if (createDatabaseIfNotExists && !databaseExists()) {
-			this.databaseAdminClient
-					.createDatabase(getInstanceId(), getDatabase(), ddlStrings).waitFor();
+			boolean createDatabase) {
+		try {
+			if (createDatabase && !this.databaseExists()) {
+				this.databaseAdminClient
+						.createDatabase(getInstanceId(), getDatabase(), ddlStrings)
+						.get();
+			}
+			else {
+				this.databaseAdminClient.updateDatabaseDdl(getInstanceId(), getDatabase(),
+						ddlStrings, null).get();
+			}
 		}
-		else if (databaseExists()) {
-			this.databaseAdminClient
-					.updateDatabaseDdl(getInstanceId(), getDatabase(), ddlStrings, null)
-					.waitFor();
+		catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			throw new SpannerDataException("DDL execution was interrupted", ex);
 		}
-		else {
-			throw new SpannerDataException(
-					"DDL could not be executed because the database does"
-							+ " not exist and it was not auto-created");
+		catch (ExecutionException ex) {
+			throw new SpannerDataException("DDL could not be executed", ex);
 		}
 	}
 
@@ -179,7 +187,7 @@ public class SpannerDatabaseAdminTemplate {
 	/**
 	 * Return a map of parent and child table relationships in the database at the
 	 * moment.
-	 * @return A map where the keys are parent table names, and the value is a set of that
+	 * @return a map where the keys are parent table names, and the value is a set of that
 	 * parent's children.
 	 */
 	public Map<String, Set<String>> getParentChildTablesMap() {
@@ -202,7 +210,7 @@ public class SpannerDatabaseAdminTemplate {
 
 	/**
 	 * Return a set of the tables that currently exist in the database.
-	 * @return A set of table names.
+	 * @return a set of table names.
 	 */
 	public Set<String> getTables() {
 		return getChildParentTablesMap().keySet();

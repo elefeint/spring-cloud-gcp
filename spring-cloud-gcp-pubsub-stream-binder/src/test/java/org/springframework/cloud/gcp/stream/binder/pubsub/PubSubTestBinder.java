@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.stream.binder.pubsub;
@@ -35,6 +35,7 @@ import org.springframework.cloud.gcp.pubsub.core.PubSubTemplate;
 import org.springframework.cloud.gcp.pubsub.support.DefaultPublisherFactory;
 import org.springframework.cloud.gcp.pubsub.support.DefaultSubscriberFactory;
 import org.springframework.cloud.gcp.stream.binder.pubsub.properties.PubSubConsumerProperties;
+import org.springframework.cloud.gcp.stream.binder.pubsub.properties.PubSubExtendedBindingProperties;
 import org.springframework.cloud.gcp.stream.binder.pubsub.properties.PubSubProducerProperties;
 import org.springframework.cloud.gcp.stream.binder.pubsub.provisioning.PubSubChannelProvisioner;
 import org.springframework.cloud.stream.binder.AbstractTestBinder;
@@ -43,7 +44,10 @@ import org.springframework.cloud.stream.binder.ExtendedProducerProperties;
 import org.springframework.context.support.GenericApplicationContext;
 
 /**
+ * Tests the binder for Pub/Sub.
+ *
  * @author João André Martins
+ * @author Daniel Zou
  */
 public class PubSubTestBinder extends AbstractTestBinder<PubSubMessageChannelBinder,
 		ExtendedConsumerProperties<PubSubConsumerProperties>,
@@ -96,7 +100,8 @@ public class PubSubTestBinder extends AbstractTestBinder<PubSubMessageChannelBin
 		PubSubTemplate pubSubTemplate = new PubSubTemplate(publisherFactory, subscriberFactory);
 
 		PubSubMessageChannelBinder binder =
-				new PubSubMessageChannelBinder(null, pubSubChannelProvisioner, pubSubTemplate);
+				new PubSubMessageChannelBinder(null, pubSubChannelProvisioner, pubSubTemplate,
+						new PubSubExtendedBindingProperties());
 		GenericApplicationContext context = new GenericApplicationContext();
 		binder.setApplicationContext(context);
 		this.setBinder(binder);

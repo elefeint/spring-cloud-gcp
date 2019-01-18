@@ -71,7 +71,6 @@
         </dependency>
 
         <!-- Cloud SQL -->
-
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-jdbc</artifactId>
@@ -165,6 +164,14 @@
                     <groupId>com.google.protobuf</groupId>
                     <artifactId>protobuf-java</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>io.grpc</groupId>
+                    <artifactId>grpc-protobuf</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.grpc</groupId>
+                    <artifactId>grpc-core</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
 
@@ -186,6 +193,19 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Vision -->
+        <dependency>
+          <groupId>com.google.cloud</groupId>
+          <artifactId>google-cloud-vision</artifactId>
+          <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-gcp-vision</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Config -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
@@ -193,43 +213,39 @@
             <optional>true</optional>
         </dependency>
 
-    </dependencies>
+        <!-- Security -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-gcp-security-iap</artifactId>
+            <optional>true</optional>
+        </dependency>
 
-    <profiles>
-        <profile>
-            <id>unit</id>
-            <activation>
-                <activeByDefault>true</activeByDefault>
-            </activation>
-            <build>
-                <testResources>
-                    <testResource>
-                        <directory>src/test/resources/unit</directory>
-                    </testResource>
-                    <testResource>
-                        <directory>src/test/resources</directory>
-                        <includes>
-                            <include>**/VCAP*</include>
-                        </includes>
-                    </testResource>
-                </testResources>
-            </build>
-        </profile>
-        <profile>
-            <id>it</id>
-            <build>
-                <testResources>
-                    <testResource>
-                        <directory>src/test/resources/it</directory>
-                    </testResource>
-                    <testResource>
-                        <directory>src/test/resources</directory>
-                        <includes>
-                            <include>**/VCAP*</include>
-                        </includes>
-                    </testResource>
-                </testResources>
-            </build>
-        </profile>
-    </profiles>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-config</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-resource-server</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.5</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <!-- Needed for making conditional expressions in logback files. -->
+            <groupId>org.codehaus.janino</groupId>
+            <artifactId>janino</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
 </project>

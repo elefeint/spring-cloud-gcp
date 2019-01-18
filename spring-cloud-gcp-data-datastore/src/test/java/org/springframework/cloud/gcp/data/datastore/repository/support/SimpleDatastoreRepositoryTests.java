@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.datastore.repository.support;
@@ -23,12 +23,12 @@ import com.google.common.collect.ImmutableList;
 import org.junit.Test;
 
 import org.springframework.cloud.gcp.data.datastore.core.DatastoreOperations;
+import org.springframework.cloud.gcp.data.datastore.core.DatastoreQueryOptions;
 import org.springframework.cloud.gcp.data.datastore.core.DatastoreTemplate;
-import org.springframework.cloud.gcp.data.datastore.core.mapping.DatastoreDataException;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
@@ -38,6 +38,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
+ * Tests for the default Datastore Repository implementation.
+ *
  * @author Chengyuan Zhao
  */
 public class SimpleDatastoreRepositoryTests {
@@ -121,25 +123,46 @@ public class SimpleDatastoreRepositoryTests {
 		verify(this.datastoreTemplate, times(1)).deleteAll(eq(Object.class));
 	}
 
-	@Test(expected = DatastoreDataException.class)
-	public void findAllSortingTest() {
-		this.simpleDatastoreRepository.findAll(mock(Sort.class));
-	}
-
-	@Test(expected = DatastoreDataException.class)
-	public void findAllPagingTest() {
-		this.simpleDatastoreRepository.findAll(mock(Pageable.class));
-	}
-
 	@Test
 	public void runTransactionCallableTest() {
-		when(this.datastoreTemplate.performTransaction(any())).thenAnswer(invocation -> {
+		when(this.datastoreTemplate.performTransaction(any())).thenAnswer((invocation) -> {
 			Function<DatastoreOperations, String> f = invocation.getArgument(0);
 			return f.apply(this.datastoreTemplate);
 		});
-		assertEquals("test",
-				new SimpleDatastoreRepository<Object, String>(this.datastoreTemplate,
-						Object.class).performTransaction(repo -> "test"));
+
+		String result = new SimpleDatastoreRepository<Object, String>(this.datastoreTemplate, Object.class)
+				.performTransaction((repo) -> "test");
+		assertThat(result).isEqualTo("test");
 	}
 
+	@Test
+	public void findAllPageableAsc() {
+		this.simpleDatastoreRepository.findAll(PageRequest.of(0, 5, Sort.Direction.ASC, "property1"));
+
+		verify(this.datastoreTemplate, times(1)).findAll(eq(Object.class),
+				eq(new DatastoreQueryOptions(5, 0, new Sort(Sort.Direction.ASC, "property1"))));
+	}
+
+	@Test
+	public void findAllPageableDesc() {
+		this.simpleDatastoreRepository.findAll(PageRequest.of(1, 5, Sort.Direction.DESC, "property1", "property2"));
+		verify(this.datastoreTemplate, times(1)).findAll(eq(Object.class),
+				eq(new DatastoreQueryOptions(5, 5,
+						Sort.by(
+								new Sort.Order(Sort.Direction.DESC, "property1"),
+								new Sort.Order(Sort.Direction.DESC, "property2")))));
+	}
+
+	@Test
+	public void findAllSortAsc() {
+		this.simpleDatastoreRepository.findAll(Sort.by(
+				new Sort.Order(Sort.Direction.DESC, "property1"),
+				new Sort.Order(Sort.Direction.ASC, "property2")));
+		verify(this.datastoreTemplate, times(1)).findAll(eq(Object.class),
+				eq(new DatastoreQueryOptions(null, null,
+						Sort.by(
+								new Sort.Order(Sort.Direction.DESC, "property1"),
+								new Sort.Order(Sort.Direction.ASC, "property2")))));
+
+	}
 }

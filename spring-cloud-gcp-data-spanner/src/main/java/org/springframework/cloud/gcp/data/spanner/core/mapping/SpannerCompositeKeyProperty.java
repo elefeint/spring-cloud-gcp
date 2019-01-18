@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.mapping;
@@ -19,13 +19,16 @@ package org.springframework.cloud.gcp.data.spanner.core.mapping;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 import com.google.cloud.spanner.Key;
-import com.google.cloud.spanner.Key.Builder;
+import com.google.cloud.spanner.Type.Code;
 
+import org.springframework.cloud.gcp.data.spanner.core.convert.SpannerTypeMapper;
 import org.springframework.data.mapping.Association;
 import org.springframework.data.mapping.PersistentEntity;
 import org.springframework.data.mapping.PersistentPropertyAccessor;
@@ -60,23 +63,29 @@ public class SpannerCompositeKeyProperty implements SpannerPersistentProperty {
 
 	Key getId(Object entity) {
 		PersistentPropertyAccessor accessor = getOwner().getPropertyAccessor(entity);
-		Builder keyBuilder = Key.newBuilder();
+		List keyParts = new ArrayList();
 		for (SpannerPersistentProperty spannerPersistentProperty : this.primaryKeyColumns) {
+			Object value = accessor.getProperty(spannerPersistentProperty);
 			if (spannerPersistentProperty.isEmbedded()) {
 				Key embeddedKeyParts = this.spannerPersistentEntity
 						.getSpannerMappingContext()
 						.getPersistentEntity(spannerPersistentProperty.getType())
 						.getIdProperty()
-						.getId(accessor.getProperty(spannerPersistentProperty));
+						.getId(value);
 				for (Object keyPart : embeddedKeyParts.getParts()) {
-					keyBuilder.appendObject(keyPart);
+					keyParts.add(keyPart);
 				}
 			}
+			else if (spannerPersistentProperty.getAnnotatedColumnItemType() == null || value == null) {
+				keyParts.add(value);
+			}
 			else {
-				keyBuilder.appendObject(accessor.getProperty(spannerPersistentProperty));
+				keyParts.add(this.spannerPersistentEntity.getSpannerEntityWriter().getSpannerWriteConverter()
+						.convert(value, SpannerTypeMapper
+								.getSimpleJavaClassFor(spannerPersistentProperty.getAnnotatedColumnItemType())));
 			}
 		}
-		return keyBuilder.build();
+		return this.spannerPersistentEntity.getSpannerEntityWriter().convertToKey(keyParts);
 	}
 
 	@Override
@@ -107,6 +116,21 @@ public class SpannerCompositeKeyProperty implements SpannerPersistentProperty {
 	@Override
 	public boolean isInterleaved() {
 		return false;
+	}
+
+	@Override
+	public boolean isGenerateSchemaNotNull() {
+		return false;
+	}
+
+	@Override
+	public boolean isCommitTimestamp() {
+		return false;
+	}
+
+	@Override
+	public Code getAnnotatedColumnItemType() {
+		return null;
 	}
 
 	@Override
@@ -260,6 +284,8 @@ public class SpannerCompositeKeyProperty implements SpannerPersistentProperty {
 	}
 
 	/**
+	 * Returns {@code null}.
+	 *
 	 * @since 1.1
 	 */
 	@Override
@@ -268,6 +294,8 @@ public class SpannerCompositeKeyProperty implements SpannerPersistentProperty {
 	}
 
 	/**
+	 * Returns {@code false}.
+	 *
 	 * @since 1.1
 	 */
 	@Override
@@ -276,6 +304,8 @@ public class SpannerCompositeKeyProperty implements SpannerPersistentProperty {
 	}
 
 	/**
+	 * Returns {@code null}.
+	 *
 	 * @since 1.1
 	 */
 	@Override

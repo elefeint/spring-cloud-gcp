@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.repository.support;
@@ -20,7 +20,9 @@ import java.util.Optional;
 
 import com.google.cloud.spanner.Key;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.mockito.Mockito;
 
 import org.springframework.cloud.gcp.data.spanner.core.SpannerTemplate;
@@ -35,11 +37,12 @@ import org.springframework.data.repository.core.RepositoryInformation;
 import org.springframework.data.repository.query.QueryLookupStrategy;
 import org.springframework.data.repository.query.QueryMethodEvaluationContextProvider;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 /**
+ * Tests for the Spanner repository factory.
+ *
  * @author Chengyuan Zhao
  * @author Balint Pato
  */
@@ -48,6 +51,12 @@ public class SpannerRepositoryFactoryTests {
 	private SpannerRepositoryFactory spannerRepositoryFactory;
 
 	private SpannerTemplate spannerTemplate;
+
+	/**
+	 * used to check exception messages and types.
+	 */
+	@Rule
+	public ExpectedException expectedEx = ExpectedException.none();
 
 	@Before
 	public void setUp() {
@@ -61,18 +70,22 @@ public class SpannerRepositoryFactoryTests {
 	public void getEntityInformationTest() {
 		EntityInformation<TestEntity, Key> entityInformation = this.spannerRepositoryFactory
 				.getEntityInformation(TestEntity.class);
-		assertEquals(TestEntity.class, entityInformation.getJavaType());
-		assertEquals(Key.class, entityInformation.getIdType());
+		assertThat(entityInformation.getJavaType()).isEqualTo(TestEntity.class);
+		assertThat(entityInformation.getIdType()).isEqualTo(Key.class);
 
 		TestEntity t = new TestEntity();
 		t.id = "a";
 		t.id2 = 3L;
-		assertEquals(Key.newBuilder().append(t.id).append(t.id2).build(),
-				entityInformation.getId(t));
+		assertThat(entityInformation.getId(t))
+				.isEqualTo(Key.newBuilder().append(t.id).append(t.id2).build());
 	}
 
-	@Test(expected = MappingException.class)
+	@Test
 	public void getEntityInformationNotAvailableTest() {
+		this.expectedEx.expect(MappingException.class);
+		this.expectedEx.expectMessage("Could not lookup mapping metadata for domain " +
+				"class org.springframework.cloud.gcp.data.spanner.repository.support." +
+				"SpannerRepositoryFactoryTests$TestEntity!");
 		SpannerRepositoryFactory factory = new SpannerRepositoryFactory(
 				mock(SpannerMappingContext.class), this.spannerTemplate);
 		factory.getEntityInformation(TestEntity.class);
@@ -87,20 +100,20 @@ public class SpannerRepositoryFactoryTests {
 		Mockito.<Class<?>>when(repoInfo.getDomainType()).thenReturn(TestEntity.class);
 		// @formatter:on
 		Object repo = this.spannerRepositoryFactory.getTargetRepository(repoInfo);
-		assertEquals(SimpleSpannerRepository.class, repo.getClass());
+		assertThat(repo).isInstanceOf(SimpleSpannerRepository.class);
 	}
 
 	@Test
 	public void getRepositoryBaseClassTest() {
 		Class baseClass = this.spannerRepositoryFactory.getRepositoryBaseClass(null);
-		assertEquals(SimpleSpannerRepository.class, baseClass);
+		assertThat(baseClass).isEqualTo(SimpleSpannerRepository.class);
 	}
 
 	@Test
 	public void getQueryLookupStrategyTest() {
 		Optional<QueryLookupStrategy> qls = this.spannerRepositoryFactory
 				.getQueryLookupStrategy(null, mock(QueryMethodEvaluationContextProvider.class));
-		assertTrue(qls.get() instanceof SpannerQueryLookupStrategy);
+		assertThat(qls.get()).isInstanceOf(SpannerQueryLookupStrategy.class);
 	}
 
 	@Table(name = "custom_test_table")

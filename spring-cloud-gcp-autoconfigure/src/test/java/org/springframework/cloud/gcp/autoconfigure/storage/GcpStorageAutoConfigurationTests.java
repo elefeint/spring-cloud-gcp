@@ -1,17 +1,17 @@
 /*
- *  Copyright 2017 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.autoconfigure.storage;
@@ -29,10 +29,12 @@ import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
+import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.web.server.LocalServerPort;
 import org.springframework.cloud.gcp.autoconfigure.core.GcpContextAutoConfiguration;
+import org.springframework.cloud.gcp.autoconfigure.security.IapAuthenticationAutoConfiguration;
 import org.springframework.cloud.gcp.autoconfigure.sql.GcpCloudSqlAutoConfiguration;
 import org.springframework.cloud.gcp.core.GcpProjectIdProvider;
 import org.springframework.cloud.gcp.storage.GoogleStorageResource;
@@ -42,13 +44,14 @@ import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
+ * Config for Storage auto config tests.
+ *
  * @author Artem Bilan
  */
 @RunWith(SpringRunner.class)
@@ -70,19 +73,24 @@ public class GcpStorageAutoConfigurationTests {
 	public void testValidObject() throws Exception {
 		TestRestTemplate testRestTemplate = new TestRestTemplate();
 		Long actual = testRestTemplate.getForObject("http://localhost:" + this.port + "/resource", Long.class);
-		assertEquals(new Long(4096L), actual);
+		assertThat(actual).isEqualTo(4096);
 	}
 
 	@Test
 	public void testAutoCreateFilesFalse() throws IOException {
-		assertFalse(((GoogleStorageResource) this.googleStorageResource)
-				.isAutoCreateFiles());
+		assertThat(((GoogleStorageResource) this.googleStorageResource)
+				.isAutoCreateFiles()).isFalse();
 	}
 
+	/**
+	 * The web app for the test.
+	 */
 	@SpringBootApplication(exclude = {
 			GcpContextAutoConfiguration.class,
 			GcpCloudSqlAutoConfiguration.class,
-			DataSourceAutoConfiguration.class
+			DataSourceAutoConfiguration.class,
+			SecurityAutoConfiguration.class,
+			IapAuthenticationAutoConfiguration.class
 	})
 	@RestController
 	static class StorageApplication {

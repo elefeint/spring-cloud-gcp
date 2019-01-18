@@ -1,17 +1,17 @@
 /*
- *  Copyright 2017 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.storage;
@@ -30,9 +30,10 @@ import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.BucketInfo;
 import com.google.cloud.storage.HttpMethod;
 import com.google.cloud.storage.Storage;
-
 import org.junit.Assert;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,13 +55,22 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
+ * Tess for Google Cloud Storage.
+ *
  * @author Vinicius Carvalho
  * @author Artem Bilan
  * @author Mike Eltsufin
+ * @author Chengyuan Zhao
  */
 @SpringBootTest(properties = "spring.main.banner-mode=off")
 @RunWith(SpringRunner.class)
 public class GoogleStorageTests {
+
+	/**
+	 * Used to test exception messages and types.
+	 */
+	@Rule
+	public ExpectedException expectedEx = ExpectedException.none();
 
 	@Value("gs://test-spring/images/spring.png")
 	private Resource remoteResource;
@@ -74,13 +84,17 @@ public class GoogleStorageTests {
 	@Autowired
 	private Storage storage;
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testEmptyPath() {
+		this.expectedEx.expect(IllegalArgumentException.class);
+		this.expectedEx.expectMessage("Invalid location: gs://");
 		new GoogleStorageResource(this.storage, "gs://", false);
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testSlashPath() {
+		this.expectedEx.expect(IllegalArgumentException.class);
+		this.expectedEx.expectMessage("No bucket specified in the location: gs:///");
 		new GoogleStorageResource(this.storage, "gs:///", false);
 	}
 
@@ -118,28 +132,40 @@ public class GoogleStorageTests {
 		Assert.assertTrue(new GoogleStorageResource(this.storage, "gs://test-spring").isBucket());
 	}
 
-	@Test(expected = IllegalStateException.class)
+	@Test
 	public void testBucketOutputStream() throws IOException {
+		this.expectedEx.expect(IllegalStateException.class);
+		this.expectedEx.expectMessage("Cannot open an output stream to a bucket: 'gs://test-spring/'");
 		((WritableResource) this.bucketResource).getOutputStream();
 	}
 
-	@Test(expected = IllegalStateException.class)
+	@Test
 	public void testBucketNoBlobInputStream() throws IOException {
+		this.expectedEx.expect(IllegalStateException.class);
+		this.expectedEx.expectMessage("Cannot open an input stream to a bucket: 'gs://test-spring/'");
 		this.bucketResource.getInputStream();
 	}
 
-	@Test(expected = IllegalStateException.class)
+	@Test
 	public void testBucketNoBlobContentLength() throws IOException {
+		this.expectedEx.expect(IllegalStateException.class);
+		this.expectedEx.expectMessage("No blob id specified in the location: " +
+				"'gs://test-spring/', and the operation is not allowed on buckets.");
 		this.bucketResource.contentLength();
 	}
 
-	@Test(expected = UnsupportedOperationException.class)
+	@Test
 	public void testBucketNoBlobFile() throws IOException {
+		this.expectedEx.expect(UnsupportedOperationException.class);
+		this.expectedEx.expectMessage("gs://test-spring/ cannot be resolved to absolute file path");
 		this.bucketResource.getFile();
 	}
 
-	@Test(expected = IllegalStateException.class)
+	@Test
 	public void testBucketNoBlobLastModified() throws IOException {
+		this.expectedEx.expect(IllegalStateException.class);
+		this.expectedEx.expectMessage("No blob id specified in the location: 'gs://test-spring/', " +
+				"and the operation is not allowed on buckets.");
 		this.bucketResource.lastModified();
 	}
 
@@ -174,8 +200,10 @@ public class GoogleStorageTests {
 		Assert.assertNotNull(os);
 	}
 
-	@Test(expected = FileNotFoundException.class)
+	@Test
 	public void testWritableOutputStreamNoAutoCreateOnNullBlob() throws Exception {
+		this.expectedEx.expect(FileNotFoundException.class);
+		this.expectedEx.expectMessage("The blob was not found: gs://test-spring/test");
 		String location = "gs://test-spring/test";
 		Storage storage = mock(Storage.class);
 		when(storage.get(BlobId.of("test-spring", "test"))).thenReturn(null);
@@ -225,8 +253,10 @@ public class GoogleStorageTests {
 		Assert.assertNotNull(os);
 	}
 
-	@Test(expected = FileNotFoundException.class)
+	@Test
 	public void testGetInputStreamOnNullBlob() throws Exception {
+		this.expectedEx.expect(FileNotFoundException.class);
+		this.expectedEx.expectMessage("The blob was not found: gs://test-spring/test");
 		String location = "gs://test-spring/test";
 		Storage storage = mock(Storage.class);
 		when(storage.get(BlobId.of("test-spring", "test"))).thenReturn(null);
@@ -297,8 +327,10 @@ public class GoogleStorageTests {
 		verify(storage, times(1)).signUrl(any(), eq(1L), eq(TimeUnit.DAYS), eq(option));
 	}
 
-	@Test(expected = MalformedURLException.class)
+	@Test
 	public void getUrlFails() throws IOException {
+		this.expectedEx.expect(MalformedURLException.class);
+		this.expectedEx.expectMessage("unknown protocol: gs");
 		this.remoteResource.getURL();
 	}
 
@@ -318,6 +350,9 @@ public class GoogleStorageTests {
 		Assert.assertFalse(resource.exists());
 	}
 
+	/**
+	 * Configuration for the tests.
+	 */
 	@Configuration
 	@Import(GoogleStorageProtocolResolver.class)
 	static class StorageApplication {

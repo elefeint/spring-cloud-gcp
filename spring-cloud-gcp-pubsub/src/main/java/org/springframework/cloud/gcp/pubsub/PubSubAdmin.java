@@ -1,17 +1,17 @@
 /*
- *  Copyright 2017 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.pubsub;
@@ -41,8 +41,10 @@ import org.springframework.util.Assert;
  * Pub/Sub admin utility that creates new topics and subscriptions on Google Cloud Pub/Sub.
  *
  * @author João André Martins
+ * @author Mike Eltsufin
+ * @author Chengyuan Zhao
  */
-public class PubSubAdmin {
+public class PubSubAdmin implements AutoCloseable {
 
 	private static final int MIN_ACK_DEADLINE_SECONDS = 10;
 
@@ -60,6 +62,9 @@ public class PubSubAdmin {
 	/**
 	 * This constructor instantiates TopicAdminClient and SubscriptionAdminClient with all their
 	 * defaults and the provided credentials provider.
+	 * @param projectIdProvider the project id provider to use
+	 * @param credentialsProvider the credentials provider to use
+	 * @throws IOException thrown when there are errors in contacting Google Cloud Pub/Sub
 	 */
 	public PubSubAdmin(GcpProjectIdProvider projectIdProvider,
 			CredentialsProvider credentialsProvider) throws IOException {
@@ -133,8 +138,8 @@ public class PubSubAdmin {
 
 	/**
 	 * Return every topic in a project.
-	 *
 	 * <p>If there are multiple pages, they will all be merged into the same result.
+	 * @return a list of topics
 	 */
 	public List<Topic> listTopics() {
 		TopicAdminClient.ListTopicsPagedResponse topicListPage =
@@ -173,7 +178,7 @@ public class PubSubAdmin {
 	 *
 	 * @param subscriptionName the name of the new subscription
 	 * @param topicName the name of the topic being subscribed to
-	 * @param pushEndpoint URL of the service receiving the push messages. If not provided, uses
+	 * @param pushEndpoint the URL of the service receiving the push messages. If not provided, uses
 	 *                     message pulling by default
 	 * @return the created subscription
 	 */
@@ -189,7 +194,7 @@ public class PubSubAdmin {
 	 * @param topicName the name of the topic being subscribed to
 	 * @param ackDeadline deadline in seconds before a message is resent, must be between 10 and 600 seconds.
 	 *                    If not provided, set to default of 10 seconds
-	 * @param pushEndpoint URL of the service receiving the push messages. If not provided, uses
+	 * @param pushEndpoint the URL of the service receiving the push messages. If not provided, uses
 	 *                     message pulling by default
 	 * @return the created subscription
 	 */
@@ -252,8 +257,8 @@ public class PubSubAdmin {
 
 	/**
 	 * Return every subscription in a project.
-	 *
 	 * <p>If there are multiple pages, they will all be merged into the same result.
+	 * @return a list of subscriptions
 	 */
 	public List<Subscription> listSubscriptions() {
 		SubscriptionAdminClient.ListSubscriptionsPagedResponse subscriptionsPage =
@@ -263,6 +268,7 @@ public class PubSubAdmin {
 	}
 
 	/**
+	 * Get the default ack deadline.
 	 * @return the default acknowledgement deadline value in seconds
 	 */
 	public int getDefaultAckDeadline() {
@@ -288,6 +294,16 @@ public class PubSubAdmin {
 						+ " and "
 						+ MAX_ACK_DEADLINE_SECONDS
 						+ " seconds.");
+	}
+
+	@Override
+	public void close() throws Exception {
+		if (this.topicAdminClient != null) {
+			this.topicAdminClient.close();
+		}
+		if (this.subscriptionAdminClient != null) {
+			this.subscriptionAdminClient.close();
+		}
 	}
 
 }

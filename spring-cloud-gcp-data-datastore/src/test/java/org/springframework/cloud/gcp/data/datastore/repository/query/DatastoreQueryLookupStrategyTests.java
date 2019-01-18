@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.datastore.repository.query;
@@ -22,13 +22,12 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
 
-import org.springframework.cloud.gcp.data.datastore.core.DatastoreOperations;
+import org.springframework.cloud.gcp.data.datastore.core.DatastoreTemplate;
 import org.springframework.cloud.gcp.data.datastore.core.mapping.DatastoreMappingContext;
 import org.springframework.data.repository.core.NamedQueries;
 import org.springframework.data.repository.query.Parameter;
 import org.springframework.data.repository.query.Parameters;
 import org.springframework.data.repository.query.QueryMethodEvaluationContextProvider;
-import org.springframework.expression.spel.standard.SpelExpressionParser;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -42,11 +41,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
+ * Tests for the Query Method lookup class.
+ *
  * @author Chengyuan Zhao
  */
 public class DatastoreQueryLookupStrategyTests {
 
-	private DatastoreOperations datastoreOperations;
+	private DatastoreTemplate datastoreTemplate;
 
 	private DatastoreMappingContext datastoreMappingContext;
 
@@ -56,15 +57,12 @@ public class DatastoreQueryLookupStrategyTests {
 
 	private QueryMethodEvaluationContextProvider evaluationContextProvider;
 
-	private SpelExpressionParser spelExpressionParser;
-
 	@Before
 	public void initMocks() {
-		this.datastoreOperations = mock(DatastoreOperations.class);
+		this.datastoreTemplate = mock(DatastoreTemplate.class);
 		this.datastoreMappingContext = new DatastoreMappingContext();
 		this.queryMethod = mock(DatastoreQueryMethod.class);
 		this.evaluationContextProvider = mock(QueryMethodEvaluationContextProvider.class);
-		this.spelExpressionParser = new SpelExpressionParser();
 		this.datastoreQueryLookupStrategy = getDatastoreQueryLookupStrategy();
 	}
 
@@ -73,6 +71,8 @@ public class DatastoreQueryLookupStrategyTests {
 		String queryName = "fakeNamedQueryName";
 		String query = "fake query";
 		when(this.queryMethod.getNamedQueryName()).thenReturn(queryName);
+		Query queryAnnotation = mock(Query.class);
+		when(this.queryMethod.getQueryAnnotation()).thenReturn(queryAnnotation);
 		NamedQueries namedQueries = mock(NamedQueries.class);
 
 		Parameters parameters = mock(Parameters.class);
@@ -81,7 +81,7 @@ public class DatastoreQueryLookupStrategyTests {
 				.thenReturn(parameters);
 
 		when(parameters.getNumberOfParameters()).thenReturn(1);
-		when(parameters.getParameter(anyInt())).thenAnswer(invocation -> {
+		when(parameters.getParameter(anyInt())).thenAnswer((invocation) -> {
 			Parameter param = mock(Parameter.class);
 			when(param.getName()).thenReturn(Optional.of("tag"));
 			Mockito.<Class>when(param.getType()).thenReturn(Object.class);
@@ -100,8 +100,7 @@ public class DatastoreQueryLookupStrategyTests {
 	private DatastoreQueryLookupStrategy getDatastoreQueryLookupStrategy() {
 		DatastoreQueryLookupStrategy spannerQueryLookupStrategy = spy(
 				new DatastoreQueryLookupStrategy(this.datastoreMappingContext,
-						this.datastoreOperations, this.evaluationContextProvider,
-						this.spelExpressionParser));
+						this.datastoreTemplate, this.evaluationContextProvider));
 		doReturn(Object.class).when(spannerQueryLookupStrategy).getEntityType(any());
 		doReturn(this.queryMethod).when(spannerQueryLookupStrategy)
 				.createQueryMethod(any(), any(), any());

@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.storage.integration.inbound;
@@ -50,7 +50,10 @@ import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.Mockito.mock;
 
 /**
+ * Tests for inbound file synchronizer.
+ *
  * @author João André Martins
+ * @author Chengyuan Zhao
  */
 @RunWith(SpringJUnit4ClassRunner.class)
 @ContextConfiguration
@@ -69,7 +72,7 @@ public class GcsInboundFileSynchronizerTests {
 		if (Files.exists(testDirectory)) {
 			if (Files.isDirectory(testDirectory)) {
 				try (Stream<Path> files = Files.list(testDirectory)) {
-					files.forEach(path -> {
+					files.forEach((path) -> {
 						try {
 							Files.delete(path);
 						}
@@ -112,6 +115,9 @@ public class GcsInboundFileSynchronizerTests {
 		assertThat(message).isNull();
 	}
 
+	/**
+	 * Spring config for the tests.
+	 */
 	@Configuration
 	@EnableIntegration
 	public static class Config {
@@ -123,15 +129,15 @@ public class GcsInboundFileSynchronizerTests {
 			Blob blob1 = mock(Blob.class);
 			Blob blob2 = mock(Blob.class);
 
-			willAnswer(invocation -> "legend of heroes").given(blob1).getName();
-			willAnswer(invocation -> "trails in the sky").given(blob2).getName();
+			willAnswer((invocation) -> "legend of heroes").given(blob1).getName();
+			willAnswer((invocation) -> "trails in the sky").given(blob2).getName();
 
-			willAnswer(invocation -> "estelle".getBytes()).given(gcsMock)
+			willAnswer((invocation) -> "estelle".getBytes()).given(gcsMock)
 					.readAllBytes(eq("test-bucket"), eq("legend of heroes"));
-			willAnswer(invocation -> "joshua".getBytes()).given(gcsMock)
+			willAnswer((invocation) -> "joshua".getBytes()).given(gcsMock)
 					.readAllBytes(eq("test-bucket"), eq("trails in the sky"));
 
-			willAnswer(invocation -> new PageImpl<>(null, null,
+			willAnswer((invocation) -> new PageImpl<>(null, null,
 					Stream.of(blob1, blob2)
 							.collect(Collectors.toList())))
 					.given(gcsMock).list("test-bucket");

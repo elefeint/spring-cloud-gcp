@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.datastore.repository.query;
@@ -20,7 +20,7 @@ import java.lang.reflect.Method;
 
 import com.google.common.annotations.VisibleForTesting;
 
-import org.springframework.cloud.gcp.data.datastore.core.DatastoreOperations;
+import org.springframework.cloud.gcp.data.datastore.core.DatastoreTemplate;
 import org.springframework.cloud.gcp.data.datastore.core.mapping.DatastoreMappingContext;
 import org.springframework.data.projection.ProjectionFactory;
 import org.springframework.data.repository.core.NamedQueries;
@@ -29,7 +29,6 @@ import org.springframework.data.repository.query.QueryLookupStrategy;
 import org.springframework.data.repository.query.QueryMethod;
 import org.springframework.data.repository.query.QueryMethodEvaluationContextProvider;
 import org.springframework.data.repository.query.RepositoryQuery;
-import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.util.Assert;
 
 /**
@@ -41,29 +40,24 @@ import org.springframework.util.Assert;
  */
 public class DatastoreQueryLookupStrategy implements QueryLookupStrategy {
 
-	private final DatastoreOperations datastoreOperations;
+	private final DatastoreTemplate datastoreTemplate;
 
 	private final DatastoreMappingContext datastoreMappingContext;
 
 	private QueryMethodEvaluationContextProvider evaluationContextProvider;
 
-	private SpelExpressionParser expressionParser;
-
 	public DatastoreQueryLookupStrategy(DatastoreMappingContext datastoreMappingContext,
-			DatastoreOperations datastoreOperations,
-			QueryMethodEvaluationContextProvider evaluationContextProvider,
-			SpelExpressionParser expressionParser) {
+			DatastoreTemplate datastoreTemplate,
+			QueryMethodEvaluationContextProvider evaluationContextProvider) {
 		Assert.notNull(datastoreMappingContext,
 				"A non-null DatastoreMappingContext is required.");
-		Assert.notNull(datastoreOperations,
+		Assert.notNull(datastoreTemplate,
 				"A non-null DatastoreOperations is required.");
 		Assert.notNull(evaluationContextProvider,
 				"A non-null EvaluationContextProvider is required.");
-		Assert.notNull(expressionParser, "A non-null SpelExpressionParser is required.");
 		this.datastoreMappingContext = datastoreMappingContext;
 		this.evaluationContextProvider = evaluationContextProvider;
-		this.datastoreOperations = datastoreOperations;
-		this.expressionParser = expressionParser;
+		this.datastoreTemplate = datastoreTemplate;
 	}
 
 	@Override
@@ -81,15 +75,15 @@ public class DatastoreQueryLookupStrategy implements QueryLookupStrategy {
 			return createGqlDatastoreQuery(entityType, queryMethod, sql);
 		}
 
-		return new PartTreeDatastoreQuery<>(queryMethod, this.datastoreOperations,
+		return new PartTreeDatastoreQuery<>(queryMethod, this.datastoreTemplate,
 				this.datastoreMappingContext, entityType);
 	}
 
 	@VisibleForTesting
 	<T> GqlDatastoreQuery<T> createGqlDatastoreQuery(Class<T> entityType,
-			QueryMethod queryMethod, String gql) {
-		return new GqlDatastoreQuery<>(entityType, queryMethod, this.datastoreOperations,
-				gql, this.evaluationContextProvider, this.expressionParser,
+			DatastoreQueryMethod queryMethod, String gql) {
+		return new GqlDatastoreQuery<>(entityType, queryMethod, this.datastoreTemplate,
+				gql, this.evaluationContextProvider,
 				this.datastoreMappingContext);
 	}
 

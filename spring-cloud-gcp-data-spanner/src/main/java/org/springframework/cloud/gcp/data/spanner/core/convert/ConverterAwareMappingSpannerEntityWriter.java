@@ -1,26 +1,28 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.convert;
 
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
+import java.util.function.Predicate;
 
 import com.google.cloud.ByteArray;
 import com.google.cloud.Date;
@@ -28,6 +30,7 @@ import com.google.cloud.Timestamp;
 import com.google.cloud.spanner.Key;
 import com.google.cloud.spanner.Mutation.WriteBuilder;
 import com.google.cloud.spanner.Struct;
+import com.google.cloud.spanner.Value;
 import com.google.cloud.spanner.ValueBinder;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -49,7 +52,7 @@ import org.springframework.util.Assert;
  * @since 1.1
  */
 public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWriter {
-	private static Set<Class> SPANNER_KEY_COMPATIBLE_TYPES = ImmutableSet
+	private static final Set<Class> SPANNER_KEY_COMPATIBLE_TYPES = ImmutableSet
 			.<Class>builder()
 			.add(Boolean.class)
 			.add(Integer.class)
@@ -62,7 +65,10 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 			.add(com.google.cloud.Date.class)
 			.build();
 
-	public static final Map<Class<?>, BiFunction<ValueBinder, ?, ?>> singleItemType2ToMethodMap;
+	/**
+	 * A map of types to functions that binds them to `ValueBinder` objects.
+	 */
+	public static final Map<Class<?>, BiFunction<ValueBinder, ?, ?>> singleItemTypeValueBinderMethodMap;
 
 	static final Map<Class<?>, BiConsumer<ValueBinder<?>, Iterable>>
 			iterablePropertyType2ToMethodMap = createIterableTypeMapping();
@@ -92,8 +98,10 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 		builder.put(Date.class, (BiFunction<ValueBinder, Date, ?>) ValueBinder::to);
 		builder.put(Boolean.class, (BiFunction<ValueBinder, Boolean, ?>) ValueBinder::to);
 		builder.put(Long.class, (BiFunction<ValueBinder, Long, ?>) ValueBinder::to);
-		builder.put(String.class, (BiFunction<ValueBinder, String, ?>) ValueBinder::to);
+		builder.put(long.class, (BiFunction<ValueBinder, Long, ?>) ValueBinder::to);
 		builder.put(Double.class, (BiFunction<ValueBinder, Double, ?>) ValueBinder::to);
+		builder.put(double.class, (BiFunction<ValueBinder, Double, ?>) ValueBinder::to);
+		builder.put(String.class, (BiFunction<ValueBinder, String, ?>) ValueBinder::to);
 		builder.put(Timestamp.class,
 				(BiFunction<ValueBinder, Timestamp, ?>) ValueBinder::to);
 		builder.put(ByteArray.class,
@@ -106,7 +114,7 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 				(BiFunction<ValueBinder, long[], ?>) ValueBinder::toInt64Array);
 		builder.put(Struct.class, (BiFunction<ValueBinder, Struct, ?>) ValueBinder::to);
 
-		singleItemType2ToMethodMap = builder.build();
+		singleItemTypeValueBinderMethodMap = builder.build();
 	}
 
 	private final SpannerMappingContext spannerMappingContext;
@@ -117,6 +125,17 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 			SpannerWriteConverter writeConverter) {
 		this.spannerMappingContext = spannerMappingContext;
 		this.writeConverter = writeConverter;
+	}
+
+	public static Class<?> findFirstCompatibleSpannerSingleItemNativeType(Predicate<Class> testFunc) {
+		Optional<Class<?>> compatible = singleItemTypeValueBinderMethodMap.keySet().stream().filter(testFunc)
+				.findFirst();
+		return compatible.isPresent() ? compatible.get() : null;
+	}
+
+	public static Class<?> findFirstCompatibleSpannerMultupleItemNativeType(Predicate<Class> testFunc) {
+		Optional<Class<?>> compatible = iterablePropertyType2ToMethodMap.keySet().stream().filter(testFunc).findFirst();
+		return compatible.isPresent() ? compatible.get() : null;
 	}
 
 	@Override
@@ -138,7 +157,7 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 		PersistentPropertyAccessor accessor = persistentEntity
 				.getPropertyAccessor(source);
 		persistentEntity.doWithColumnBackedProperties(
-				spannerPersistentProperty -> {
+				(spannerPersistentProperty) -> {
 					if (spannerPersistentProperty.isEmbedded()) {
 						Object embeddedObject = accessor
 								.getProperty(spannerPersistentProperty);
@@ -154,7 +173,7 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 	}
 
 	@Override
-	public Key writeToKey(Object key) {
+	public Key convertToKey(Object key) {
 		Assert.notNull(key, "Key of an entity to be written cannot be null!");
 
 		Key k;
@@ -179,9 +198,14 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 		return k;
 	}
 
+	@Override
+	public SpannerWriteConverter getSpannerWriteConverter() {
+		return this.writeConverter;
+	}
+
 	private Object convertKeyPart(Object object) {
 
-		if (isValidSpannerKeyType(ConversionUtils.boxIfNeeded(object.getClass()))) {
+		if (object == null || isValidSpannerKeyType(ConversionUtils.boxIfNeeded(object.getClass()))) {
 			return object;
 		}
 		/*
@@ -189,17 +213,16 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 		 * converter. For example, if a type can be converted to both String and Double, we want
 		 * both the this key conversion and the write converter to choose the same.
 		 */
-		for (Class<?> validKeyType : singleItemType2ToMethodMap.keySet()) {
-			if (!isValidSpannerKeyType(validKeyType)) {
-				continue;
-			}
-			if (this.writeConverter.canConvert(object.getClass(), validKeyType)) {
-				return this.writeConverter.convert(object, validKeyType);
-			}
+		Class<?> compatible = ConverterAwareMappingSpannerEntityWriter
+				.findFirstCompatibleSpannerSingleItemNativeType((spannerType) -> isValidSpannerKeyType(spannerType)
+						&& this.writeConverter.canConvert(object.getClass(), spannerType));
+
+		if (compatible == null) {
+			throw new SpannerDataException(
+					"The given object type couldn't be built into a Cloud Spanner Key: "
+							+ object.getClass());
 		}
-		throw new SpannerDataException(
-				"The given object type couldn't be built into a Cloud Spanner Key: "
-						+ object.getClass());
+		return this.writeConverter.convert(object, compatible);
 	}
 
 	private boolean isValidSpannerKeyType(Class type) {
@@ -211,7 +234,7 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 	/**
 	 * <p>
 	 * For each property this method "set"s the column name and finds the corresponding "to"
-	 * method on the {@link ValueBinder} interface
+	 * method on the {@link ValueBinder} interface.
 	 * </p>
 	 * <pre>
 	 * {
@@ -227,6 +250,10 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 	 * 			.to("Joel");
 	 * }
 	 * </pre>
+	 *
+	 * @param accessor the accessor used to get the value to write
+	 * @param property the property that will be written
+	 * @param sink the object that will accept the value to be written
 	 */
 	// @formatter:on
 	@SuppressWarnings("unchecked")
@@ -238,7 +265,7 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 		Class<?> propertyType = property.getType();
 		ValueBinder<WriteBuilder> valueBinder = sink.set(property.getColumnName());
 
-		boolean valueSet;
+		boolean valueSet = false;
 
 		/*
 		 * Due to type erasure, binder methods for Iterable properties must be manually specified.
@@ -250,15 +277,35 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 					property);
 		}
 		else {
-			valueSet = attemptSetSingleItemValue(propertyValue, propertyType, valueBinder,
-					propertyType);
-			if (!valueSet) {
-				for (Class<?> targetType : singleItemType2ToMethodMap.keySet()) {
+
+			// if the property is a commit timestamp, then its Spanner column type is always TIMESTAMP
+			// and only the dummy value needs to be written to trigger auto-population of the commit
+			// time
+			if (property.isCommitTimestamp()) {
+				valueSet = attemptSetSingleItemValue(Value.COMMIT_TIMESTAMP, Timestamp.class, valueBinder,
+						Timestamp.class);
+			}
+			// use the user's annotated column type if possible
+			else if (property.getAnnotatedColumnItemType() != null) {
+				valueSet = attemptSetSingleItemValue(propertyValue, propertyType,
+						valueBinder,
+						SpannerTypeMapper.getSimpleJavaClassFor(property.getAnnotatedColumnItemType()));
+			}
+			else {
+				// directly try to set using the property's original Java type
+				if (!valueSet) {
 					valueSet = attemptSetSingleItemValue(propertyValue, propertyType,
-							valueBinder,
-							targetType);
-					if (valueSet) {
-						break;
+							valueBinder, propertyType);
+				}
+
+				// Finally try and find any conversion that works
+				if (!valueSet) {
+					for (Class<?> targetType : singleItemTypeValueBinderMethodMap.keySet()) {
+						valueSet = attemptSetSingleItemValue(propertyValue, propertyType,
+								valueBinder, targetType);
+						if (valueSet) {
+							break;
+						}
 					}
 				}
 			}
@@ -279,30 +326,49 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 			return false;
 		}
 
-		// due to checkstyle limit of 3 return statments per function, this variable is
-		// used.
 		boolean valueSet = false;
 
-		if (iterablePropertyType2ToMethodMap.containsKey(innerType)) {
-			iterablePropertyType2ToMethodMap.get(innerType).accept(valueBinder,
-					value);
-			valueSet = true;
+		// use the annotated column type if possible.
+		if (spannerPersistentProperty.getAnnotatedColumnItemType() != null) {
+			valueSet = attemptSetIterablePropertyWithType(value, valueBinder, innerType,
+					SpannerTypeMapper.getSimpleJavaClassFor(
+							spannerPersistentProperty.getAnnotatedColumnItemType()));
 		}
+		else {
 
-		if (!valueSet) {
-			for (Class<?> targetType : iterablePropertyType2ToMethodMap.keySet()) {
-				if (this.writeConverter.canConvert(innerType, targetType)) {
-					BiConsumer<ValueBinder<?>, Iterable> toMethod =
-							iterablePropertyType2ToMethodMap.get(targetType);
-					toMethod.accept(valueBinder,
-							value == null ? null
-									: ConversionUtils.convertIterable(value, targetType, this.writeConverter));
-					valueSet = true;
-					break;
+			// attempt check if there is directly a write method that can accept the
+			// property
+			if (!valueSet && iterablePropertyType2ToMethodMap.containsKey(innerType)) {
+				iterablePropertyType2ToMethodMap.get(innerType).accept(valueBinder,
+						value);
+				valueSet = true;
+			}
+
+			// Finally find any compatible conversion
+			if (!valueSet) {
+				for (Class<?> targetType : iterablePropertyType2ToMethodMap.keySet()) {
+					valueSet = attemptSetIterablePropertyWithType(value, valueBinder,
+							innerType, targetType);
+					if (valueSet) {
+						break;
+					}
 				}
+
 			}
 		}
 		return valueSet;
+	}
+
+	private boolean attemptSetIterablePropertyWithType(Iterable<Object> value,
+			ValueBinder<WriteBuilder> valueBinder, Class innerType, Class<?> targetType) {
+		if (this.writeConverter.canConvert(innerType, targetType)) {
+			BiConsumer<ValueBinder<?>, Iterable> toMethod = iterablePropertyType2ToMethodMap
+					.get(targetType);
+			toMethod.accept(valueBinder,
+					(value != null) ? ConversionUtils.convertIterable(value, targetType, this.writeConverter) : null);
+			return true;
+		}
+		return false;
 	}
 
 	@SuppressWarnings("unchecked")
@@ -313,14 +379,14 @@ public class ConverterAwareMappingSpannerEntityWriter implements SpannerEntityWr
 		}
 		Class innerType = ConversionUtils.boxIfNeeded(targetType);
 		BiFunction<ValueBinder, T, ?> toMethod = (BiFunction<ValueBinder, T, ?>)
-				singleItemType2ToMethodMap.get(innerType);
+		singleItemTypeValueBinderMethodMap.get(innerType);
 		if (toMethod == null) {
 			return false;
 		}
 		// We're just checking for the bind to have succeeded, we don't need to chain the result.
 		// Spanner allows binding of null values.
 		Object ignored = toMethod.apply(valueBinder,
-				value == null ? null : this.writeConverter.convert(value, targetType));
+				(value != null) ? this.writeConverter.convert(value, targetType) : null);
 		return true;
 	}
 }

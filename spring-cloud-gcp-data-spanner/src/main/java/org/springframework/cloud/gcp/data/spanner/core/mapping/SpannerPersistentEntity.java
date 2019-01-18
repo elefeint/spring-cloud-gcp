@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.mapping;
@@ -19,6 +19,7 @@ package org.springframework.cloud.gcp.data.spanner.core.mapping;
 import java.util.List;
 import java.util.Set;
 
+import org.springframework.cloud.gcp.data.spanner.core.convert.SpannerEntityWriter;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.data.mapping.PropertyHandler;
 import org.springframework.data.mapping.model.MutablePersistentEntity;
@@ -27,6 +28,7 @@ import org.springframework.data.mapping.model.MutablePersistentEntity;
  * Cloud Spanner specific interface for a {@link MutablePersistentEntity} stored in a Cloud
  * Spanner table.
  *
+ * @param <T> the underlying persistent entity type
  * @author Ray Tsang
  * @author Chengyuan Zhao
  *
@@ -50,14 +52,14 @@ public interface SpannerPersistentEntity<T> extends
 	/**
 	 * Gets the primary key properties in order. Embedded object properties containing key
 	 * parts are represented as a single property.
-	 * @return An array of the properties comprising the primary key in order.
+	 * @return an array of the properties comprising the primary key in order.
 	 */
 	SpannerPersistentProperty[] getPrimaryKeyProperties();
 
 	/**
 	 * Gets the primary key properties in order. Embedded object properties containing key
 	 * parts are flattened into their multiple primary key properties.
-	 * @return An array of the properties comprising the primary key in order.
+	 * @return an array of the properties comprising the primary key in order.
 	 */
 	List<SpannerPersistentProperty> getFlattenedPrimaryKeyProperties();
 
@@ -67,6 +69,13 @@ public interface SpannerPersistentEntity<T> extends
 	 * @return the SpannerMappingContext instance
 	 */
 	SpannerMappingContext getSpannerMappingContext();
+
+	/**
+	 * Gets a SpannerEntityWriter that can be used to create Cloud Spanner keys from one or
+	 * more persistent properties.
+	 * @return a SpannerEntityWriter.
+	 */
+	SpannerEntityWriter getSpannerEntityWriter();
 
 	@Override
 	SpannerCompositeKeyProperty getIdProperty();

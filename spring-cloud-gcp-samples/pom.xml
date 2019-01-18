@@ -17,20 +17,24 @@
 		<main.basedir>${basedir}/..</main.basedir>
 	</properties>
 
-    <modules>
+	<modules>
 		<module>spring-cloud-gcp-config-sample</module>
 		<module>spring-cloud-gcp-trace-sample</module>
 		<module>spring-cloud-gcp-logging-sample</module>
-		<module>spring-cloud-gcp-sql-sample</module>
+		<module>spring-cloud-gcp-sql-mysql-sample</module>
 		<module>spring-cloud-gcp-integration-pubsub-sample</module>
 		<module>spring-cloud-gcp-storage-resource-sample</module>
 		<module>spring-cloud-gcp-data-spanner-sample</module>
 		<module>spring-cloud-gcp-data-datastore-sample</module>
+		<module>spring-cloud-gcp-data-datastore-basic-sample</module>
 		<module>spring-cloud-gcp-pubsub-sample</module>
 		<module>spring-cloud-gcp-data-jpa-sample</module>
 		<module>spring-cloud-gcp-vision-api-sample</module>
 		<module>spring-cloud-gcp-integration-storage-sample</module>
 		<module>spring-cloud-gcp-pubsub-binder-sample</module>
+		<module>spring-cloud-gcp-integration-pubsub-json-sample</module>
+		<module>spring-cloud-gcp-security-iap-sample</module>
+		<module>spring-cloud-gcp-sql-postgres-sample</module>
 	</modules>
 
 	<build>
@@ -38,6 +42,12 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+			<plugin>
+				<artifactId>maven-deploy-plugin</artifactId>
+				<configuration>
+					<skip>true</skip>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>

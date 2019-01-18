@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core;
@@ -21,7 +21,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 import com.google.cloud.ByteArray;
@@ -30,7 +29,6 @@ import com.google.cloud.spanner.DatabaseClient;
 import com.google.cloud.spanner.Key;
 import com.google.cloud.spanner.KeySet;
 import com.google.cloud.spanner.Mutation;
-import com.google.cloud.spanner.Options.QueryOption;
 import com.google.cloud.spanner.Options.ReadOption;
 import com.google.cloud.spanner.ReadContext;
 import com.google.cloud.spanner.ReadOnlyTransaction;
@@ -42,7 +40,9 @@ import com.google.cloud.spanner.TransactionRunner;
 import com.google.cloud.spanner.TransactionRunner.TransactionCallable;
 import com.google.common.collect.ImmutableList;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 import org.springframework.cloud.gcp.data.spanner.core.admin.SpannerSchemaUtils;
 import org.springframework.cloud.gcp.data.spanner.core.convert.SpannerEntityProcessor;
@@ -53,16 +53,12 @@ import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerMappingCon
 import org.springframework.cloud.gcp.data.spanner.core.mapping.Table;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.domain.Sort.Order;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertSame;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.same;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -71,9 +67,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
+ * Tests for the Spanner Template.
+ *
  * @author Chengyuan Zhao
  */
 public class SpannerTemplateTests {
+
+	private static final Statement DML = Statement.of("update statement");
 
 	private DatabaseClient databaseClient;
 
@@ -88,6 +88,12 @@ public class SpannerTemplateTests {
 	private SpannerTemplate spannerTemplate;
 
 	private SpannerSchemaUtils schemaUtils;
+
+	/**
+	 * used for checking exception messages and tests.
+	 */
+	@Rule
+	public ExpectedException expectedException = ExpectedException.none();
 
 	@Before
 	public void setUp() {
@@ -105,6 +111,12 @@ public class SpannerTemplateTests {
 	}
 
 	@Test
+	public void executeDmlTest() {
+		this.spannerTemplate.executeDmlStatement(DML);
+		verify(this.databaseClient, times(1)).executePartitionedUpdate(eq(DML));
+	}
+
+	@Test
 	public void readWriteTransactionTest() {
 
 		TransactionRunner transactionRunner = mock(TransactionRunner.class);
@@ -112,7 +124,7 @@ public class SpannerTemplateTests {
 
 		TransactionContext transactionContext = mock(TransactionContext.class);
 
-		when(transactionRunner.run(any())).thenAnswer(invocation -> {
+		when(transactionRunner.run(any())).thenAnswer((invocation) -> {
 			TransactionCallable transactionCallable = invocation.getArgument(0);
 			return transactionCallable.run(transactionContext);
 		});
@@ -120,15 +132,17 @@ public class SpannerTemplateTests {
 		TestEntity t = new TestEntity();
 
 		String finalResult = this.spannerTemplate
-				.performReadWriteTransaction(spannerOperations -> {
-					List<TestEntity> items = spannerOperations.readAll(TestEntity.class);
-					spannerOperations.update(t);
+				.performReadWriteTransaction((spannerTemplate) -> {
+					List<TestEntity> items = spannerTemplate.readAll(TestEntity.class);
+					spannerTemplate.update(t);
+					spannerTemplate.executeDmlStatement(DML);
 					return "all done";
 				});
 
-		assertEquals("all done", finalResult);
+		assertThat(finalResult).isEqualTo("all done");
 		verify(transactionContext, times(1)).buffer((List<Mutation>) any());
 		verify(transactionContext, times(1)).read(eq("custom_test_table"), any(), any());
+		verify(transactionContext, times(1)).executeUpdate(eq(DML));
 	}
 
 	@Test
@@ -140,7 +154,7 @@ public class SpannerTemplateTests {
 						.thenReturn(readOnlyTransaction);
 
 		String finalResult = this.spannerTemplate
-				.performReadOnlyTransaction(spannerOperations -> {
+				.performReadOnlyTransaction((spannerOperations) -> {
 					List<TestEntity> items = spannerOperations.readAll(TestEntity.class);
 					TestEntity item = spannerOperations.read(TestEntity.class,
 							Key.of("key"));
@@ -148,43 +162,77 @@ public class SpannerTemplateTests {
 				}, new SpannerReadOptions()
 						.setTimestamp(Timestamp.ofTimeMicroseconds(333)));
 
-		assertEquals("all done", finalResult);
+		assertThat(finalResult).isEqualTo("all done");
 		verify(readOnlyTransaction, times(2)).read(eq("custom_test_table"), any(), any());
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
+	public void readOnlyTransactionDmlTest() {
+
+		this.expectedException.expectMessage("A read-only transaction template cannot execute DML.");
+
+		ReadOnlyTransaction readOnlyTransaction = mock(ReadOnlyTransaction.class);
+		when(this.databaseClient.readOnlyTransaction(
+				eq(TimestampBound.ofReadTimestamp(Timestamp.ofTimeMicroseconds(333)))))
+						.thenReturn(readOnlyTransaction);
+
+		this.spannerTemplate
+				.performReadOnlyTransaction((spannerOperations) -> {
+					spannerOperations.executeDmlStatement(Statement.of("fail"));
+					return null;
+				}, new SpannerReadOptions()
+						.setTimestamp(Timestamp.ofTimeMicroseconds(333)));
+	}
+
+	@Test
 	public void nullDatabaseClientTest() {
+
+		this.expectedException.expect(IllegalArgumentException.class);
+		this.expectedException.expectMessage("A valid database client for Spanner is required.");
+
 		new SpannerTemplate(null, this.mappingContext, this.objectMapper,
 				this.mutationFactory, this.schemaUtils);
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void nullMappingContextTest() {
+
+		this.expectedException.expect(IllegalArgumentException.class);
+		this.expectedException.expectMessage("A valid mapping context for Spanner is required.");
+
 		new SpannerTemplate(this.databaseClient, null, this.objectMapper,
 				this.mutationFactory, this.schemaUtils);
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void nullObjectMapperTest() {
+
+		this.expectedException.expect(IllegalArgumentException.class);
+		this.expectedException.expectMessage("A valid entity processor for Spanner is required.");
+
 		new SpannerTemplate(this.databaseClient, this.mappingContext, null,
 				this.mutationFactory, this.schemaUtils);
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void nullMutationFactoryTest() {
+
+		this.expectedException.expect(IllegalArgumentException.class);
+		this.expectedException.expectMessage("A valid Spanner mutation factory is required.");
+
 		new SpannerTemplate(this.databaseClient, this.mappingContext, this.objectMapper,
 				null, this.schemaUtils);
 	}
 
 	@Test
 	public void getMappingContextTest() {
-		assertSame(this.mappingContext, this.spannerTemplate.getMappingContext());
+		assertThat(this.spannerTemplate.getMappingContext()).isSameAs(this.mappingContext);
 	}
 
 	@Test
 	public void findSingleKeyNullTest() {
 		when(this.readContext.read(any(), any(), any())).thenReturn(null);
-		assertNull(this.spannerTemplate.read(TestEntity.class, Key.of("key")));
+		assertThat(this.spannerTemplate.read(TestEntity.class, Key.of("key"))).isNull();
 	}
 
 	@Test
@@ -213,7 +261,7 @@ public class SpannerTemplateTests {
 		when(this.readContext.read(any(), any(), any(), any())).thenReturn(results);
 		this.spannerTemplate.read(TestEntity.class, keySet, options);
 		verify(this.objectMapper, times(1)).mapToList(same(results),
-				eq(TestEntity.class));
+				eq(TestEntity.class), isNull(), eq(false));
 		verify(this.readContext, times(1)).read(eq("custom_test_table"), same(keySet),
 				any(), same(readOption));
 	}
@@ -229,23 +277,9 @@ public class SpannerTemplateTests {
 				.thenReturn(results);
 		this.spannerTemplate.read(TestEntity.class, keySet, options);
 		verify(this.objectMapper, times(1)).mapToList(same(results),
-				eq(TestEntity.class));
+				eq(TestEntity.class), isNull(), eq(false));
 		verify(this.readContext, times(1)).readUsingIndex(eq("custom_test_table"),
 				eq("index"), same(keySet), any(), same(readOption));
-	}
-
-	@Test
-	public void findByStatementTest() {
-		ResultSet results = mock(ResultSet.class);
-		QueryOption queryOption = mock(QueryOption.class);
-		SpannerQueryOptions options = new SpannerQueryOptions()
-				.addQueryOption(queryOption);
-		when(this.readContext.executeQuery(any(), any())).thenReturn(results);
-		this.spannerTemplate.query(TestEntity.class, "test", null, null, options);
-		verify(this.objectMapper, times(1)).mapToList(same(results),
-				eq(TestEntity.class), eq(Optional.empty()), eq(false));
-		verify(this.readContext, times(1)).executeQuery(eq(Statement.of("SELECT * FROM (test)")),
-				same(queryOption));
 	}
 
 	@Test
@@ -309,7 +343,7 @@ public class SpannerTemplateTests {
 				.build();
 		TestEntity entity = new TestEntity();
 		when(this.mutationFactory.update(same(entity),
-				eq(Optional.of(new HashSet<>(Arrays.asList("a", "b"))))))
+				eq(new HashSet<>(Arrays.asList("a", "b")))))
 						.thenReturn(Collections.singletonList(mutation));
 		this.spannerTemplate.update(entity, "a", "b");
 		verify(this.databaseClient, times(1))
@@ -322,9 +356,9 @@ public class SpannerTemplateTests {
 				.build();
 		TestEntity entity = new TestEntity();
 		Set<String> cols = new HashSet<>(Arrays.asList("a", "b"));
-		when(this.mutationFactory.update(same(entity), eq(Optional.of(cols))))
+		when(this.mutationFactory.update(same(entity), eq(cols)))
 				.thenReturn(Collections.singletonList(mutation));
-		this.spannerTemplate.update(entity, Optional.of(cols));
+		this.spannerTemplate.update(entity, cols);
 		verify(this.databaseClient, times(1))
 				.write(eq(Collections.singletonList(mutation)));
 	}
@@ -359,7 +393,7 @@ public class SpannerTemplateTests {
 				.build();
 		TestEntity entity = new TestEntity();
 		when(this.mutationFactory.upsert(same(entity),
-				eq(Optional.of(new HashSet<>(Arrays.asList("a", "b"))))))
+				eq(new HashSet<>(Arrays.asList("a", "b")))))
 						.thenReturn(Collections.singletonList(mutation));
 		this.spannerTemplate.upsert(entity, "a", "b");
 		verify(this.databaseClient, times(1))
@@ -372,9 +406,9 @@ public class SpannerTemplateTests {
 				.build();
 		TestEntity entity = new TestEntity();
 		Set<String> cols = new HashSet<>(Arrays.asList("a", "b"));
-		when(this.mutationFactory.upsert(same(entity), eq(Optional.of(cols))))
+		when(this.mutationFactory.upsert(same(entity), eq(cols)))
 				.thenReturn(Collections.singletonList(mutation));
-		this.spannerTemplate.upsert(entity, Optional.of(cols));
+		this.spannerTemplate.upsert(entity, cols);
 		verify(this.databaseClient, times(1))
 				.write(eq(Collections.singletonList(mutation)));
 	}
@@ -435,49 +469,6 @@ public class SpannerTemplateTests {
 	}
 
 	@Test
-	public void findAllSortWithLimitsOffsetTest() {
-		SpannerTemplate spyTemplate = spy(this.spannerTemplate);
-		SpannerQueryOptions queryOption = new SpannerQueryOptions().setLimit(3L)
-				.setOffset(5L);
-		Sort sort = Sort.by(Order.asc("id"), Order.desc("something").ignoreCase(),
-				Order.asc("other"), Order.desc("non_existant_prop"));
-
-		doAnswer(invocation -> {
-			assertEquals(
-					"SELECT * FROM (SELECT other , doubles , id2 , bytes , integerList , id , "
-							+ "custom_col , bytesList FROM custom_test_table) "
-							+ "ORDER BY id ASC , LOWER(custom_col) DESC , other ASC , non_existant_prop DESC "
-							+ "LIMIT 3 OFFSET 5",
-					((Statement) invocation.getArgument(0)).getSql());
-			return null;
-		}).when(spyTemplate).executeQuery(any(), any());
-
-		spyTemplate.queryAll(TestEntity.class, queryOption.setSort(sort));
-		verify(spyTemplate, times(1)).query(eq(TestEntity.class), any(), any(), any(),
-				any());
-	}
-
-	@Test
-	public void findAllNoSortWithLimitsOffsetTest() {
-		SpannerTemplate spyTemplate = spy(this.spannerTemplate);
-		SpannerQueryOptions queryOption = new SpannerQueryOptions().setLimit(3L)
-				.setOffset(5L);
-
-		doAnswer(invocation -> {
-			assertEquals(
-					"SELECT * FROM (SELECT other , doubles , id2 , bytes , integerList , id , "
-							+ "custom_col , bytesList FROM custom_test_table) "
-							+ "LIMIT 3 OFFSET 5",
-					((Statement) invocation.getArgument(0)).getSql());
-			return null;
-		}).when(spyTemplate).executeQuery(any(), any());
-
-		spyTemplate.queryAll(TestEntity.class, queryOption);
-		verify(spyTemplate, times(1)).query(eq(TestEntity.class), any(), any(), any(),
-				any());
-	}
-
-	@Test
 	public void findAllPageableTest() {
 		SpannerTemplate spyTemplate = spy(this.spannerTemplate);
 		Sort sort = mock(Sort.class);
@@ -485,7 +476,8 @@ public class SpannerTemplateTests {
 
 		long offset = 5L;
 		int limit = 3;
-		SpannerQueryOptions queryOption = new SpannerQueryOptions().setOffset(offset)
+		SpannerPageableQueryOptions queryOption = new SpannerPageableQueryOptions()
+				.setOffset(offset)
 				.setLimit(limit);
 
 		when(pageable.getOffset()).thenReturn(offset);
@@ -509,9 +501,9 @@ public class SpannerTemplateTests {
 
 		List results = spyTemplate.queryAll(TestEntity.class,
 				queryOption.setSort(pageable.getSort()));
-		assertEquals("a", ((TestEntity) results.get(0)).id);
-		assertEquals("b", ((TestEntity) results.get(1)).id);
-		assertEquals("c", ((TestEntity) results.get(2)).id);
+		assertThat(((TestEntity) results.get(0)).id).isEqualTo("a");
+		assertThat(((TestEntity) results.get(1)).id).isEqualTo("b");
+		assertThat(((TestEntity) results.get(2)).id).isEqualTo("c");
 	}
 
 	@Test
@@ -530,15 +522,25 @@ public class SpannerTemplateTests {
 		gc.id4 = "key4";
 		when(this.objectMapper.mapToList(any(), eq(ParentEntity.class)))
 				.thenReturn(ImmutableList.of(p));
-		when(this.objectMapper.mapToList(any(), eq(ChildEntity.class), any(), eq(true)))
+		when(this.objectMapper.mapToList(any(), eq(ParentEntity.class), any(), eq(false)))
+				.thenReturn(ImmutableList.of(p));
+		when(this.objectMapper.mapToList(any(), eq(ChildEntity.class), any(), eq(false)))
 				.thenReturn(ImmutableList.of(c));
 		when(this.objectMapper.mapToList(any(), eq(GrandChildEntity.class), any(),
-				eq(true))).thenReturn(ImmutableList.of(gc));
+				eq(false))).thenReturn(ImmutableList.of(gc));
+
+		ParentEntity resultWithoutChildren = this.spannerTemplate
+				.readAll(ParentEntity.class,
+						new SpannerReadOptions()
+								.setIncludeProperties(Collections.singleton("id")))
+				.get(0);
+		assertThat(resultWithoutChildren.childEntities).isNull();
+
 		ParentEntity result = this.spannerTemplate.readAll(ParentEntity.class).get(0);
-		assertEquals(1, result.childEntities.size());
-		assertSame(c, result.childEntities.get(0));
-		assertEquals(1, result.childEntities.get(0).childEntities.size());
-		assertSame(gc, result.childEntities.get(0).childEntities.get(0));
+		assertThat(result.childEntities).hasSize(1);
+		assertThat(result.childEntities.get(0)).isSameAs(c);
+		assertThat(result.childEntities.get(0).childEntities).hasSize(1);
+		assertThat(result.childEntities.get(0).childEntities.get(0)).isSameAs(gc);
 	}
 
 	@Table(name = "custom_test_table")

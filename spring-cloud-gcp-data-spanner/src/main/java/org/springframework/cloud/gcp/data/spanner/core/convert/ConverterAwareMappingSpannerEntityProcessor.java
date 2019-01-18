@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.convert;
@@ -21,13 +21,11 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 import com.google.cloud.spanner.Key;
 import com.google.cloud.spanner.ResultSet;
 import com.google.cloud.spanner.Struct;
-import com.google.common.annotations.VisibleForTesting;
 
 import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerDataException;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerMappingContext;
@@ -70,18 +68,17 @@ public class ConverterAwareMappingSpannerEntityProcessor implements SpannerEntit
 
 	@Override
 	public <T> List<T> mapToList(ResultSet resultSet, Class<T> entityClass) {
-		return mapToList(resultSet, entityClass, Optional.empty(), false);
+		return mapToList(resultSet, entityClass, null, false);
 	}
 
 	@Override
 	public <T> List<T> mapToList(ResultSet resultSet, Class<T> entityClass,
-			Optional<Set<String>> includeColumns, boolean allowMissingColumns) {
+			Set<String> includeColumns, boolean allowMissingColumns) {
 		ArrayList<T> result = new ArrayList<>();
 		while (resultSet.next()) {
 			result.add(this.entityReader.read(entityClass,
 					resultSet.getCurrentRowAsStruct(),
-					includeColumns == null || !includeColumns.isPresent() ? null
-							: includeColumns.get(),
+					includeColumns,
 					allowMissingColumns));
 		}
 		resultSet.close();
@@ -92,35 +89,34 @@ public class ConverterAwareMappingSpannerEntityProcessor implements SpannerEntit
 	public <T> List<T> mapToList(ResultSet resultSet, Class<T> entityClass,
 			String... includeColumns) {
 		return mapToList(resultSet, entityClass,
-				includeColumns.length == 0 ? Optional.empty()
-						: Optional.of(new HashSet<>(Arrays.asList(includeColumns))),
+				(includeColumns.length == 0) ? null
+						: new HashSet<>(Arrays.asList(includeColumns)),
 				false);
 	}
 
 	@Override
-	public Class getCorrespondingSpannerJavaType(Class originalType, boolean isIterableInnerType) {
-		Set<Class<?>> spannerTypes = (isIterableInnerType
-				? ConverterAwareMappingSpannerEntityWriter.iterablePropertyType2ToMethodMap
-				: ConverterAwareMappingSpannerEntityWriter.singleItemType2ToMethodMap).keySet();
-		if (spannerTypes.contains(originalType)) {
-			return originalType;
-		}
-		Class ret = null;
-		for (Class spannerType : spannerTypes) {
-			if (isIterableInnerType
-					&& canHandlePropertyTypeForArrayRead(originalType, spannerType)
-					&& canHandlePropertyTypeForArrayWrite(originalType, spannerType)) {
-				ret = spannerType;
-				break;
+	public Class<?> getCorrespondingSpannerJavaType(Class originalType, boolean isIterableInnerType) {
+		Class<?> compatible;
+		if (isIterableInnerType) {
+			if (ConverterAwareMappingSpannerEntityWriter.iterablePropertyType2ToMethodMap.keySet()
+					.contains(originalType)) {
+				return originalType;
 			}
-			else if (!isIterableInnerType
-					&& canHandlePropertyTypeForSingularRead(originalType, spannerType)
-					&& canHandlePropertyTypeForSingularWrite(originalType, spannerType)) {
-				ret = spannerType;
-				break;
-			}
+			compatible = ConverterAwareMappingSpannerEntityWriter.findFirstCompatibleSpannerMultupleItemNativeType(
+					(spannerType) -> canHandlePropertyTypeForArrayRead(originalType, spannerType)
+							&& this.writeConverter.canConvert(originalType, spannerType));
 		}
-		return ret;
+		else {
+			if (ConverterAwareMappingSpannerEntityWriter.singleItemTypeValueBinderMethodMap.keySet()
+					.contains(originalType)) {
+				return originalType;
+			}
+			compatible = ConverterAwareMappingSpannerEntityWriter
+					.findFirstCompatibleSpannerSingleItemNativeType(
+							(spannerType) -> canHandlePropertyTypeForSingularRead(originalType, spannerType)
+									&& this.writeConverter.canConvert(originalType, spannerType));
+		}
+		return compatible;
 	}
 
 	private boolean canHandlePropertyTypeForSingularRead(Class type,
@@ -149,31 +145,6 @@ public class ConverterAwareMappingSpannerEntityProcessor implements SpannerEntit
 				|| this.readConverter.canConvert(spannerSupportedArrayInnerType, type);
 	}
 
-	private boolean canHandlePropertyTypeForSingularWrite(Class type,
-			Class spannerSupportedType) {
-		if (!ConverterAwareMappingSpannerEntityWriter.singleItemType2ToMethodMap
-				.containsKey(spannerSupportedType)) {
-			throw new SpannerDataException(
-					"The given spannerSupportedType is not a known Spanner directly-supported column type: "
-							+ spannerSupportedType);
-		}
-		return type.equals(spannerSupportedType)
-				|| this.writeConverter.canConvert(type, spannerSupportedType);
-	}
-
-	private boolean canHandlePropertyTypeForArrayWrite(Class type,
-			Class spannerSupportedArrayInnerType) {
-		if (!ConverterAwareMappingSpannerEntityWriter.iterablePropertyType2ToMethodMap
-				.containsKey(spannerSupportedArrayInnerType)) {
-			throw new SpannerDataException(
-					"The given spannerSupportedArrayInnerType is not a known "
-							+ "Spanner directly-supported column type: "
-							+ spannerSupportedArrayInnerType);
-		}
-		return type.equals(spannerSupportedArrayInnerType)
-				|| this.writeConverter.canConvert(type, spannerSupportedArrayInnerType);
-	}
-
 	/**
 	 * Writes each of the source properties to the sink.
 	 * @param source entity to be written
@@ -191,8 +162,13 @@ public class ConverterAwareMappingSpannerEntityProcessor implements SpannerEntit
 	}
 
 	@Override
-	public Key writeToKey(Object key) {
-		return this.entityWriter.writeToKey(key);
+	public Key convertToKey(Object key) {
+		return this.entityWriter.convertToKey(key);
+	}
+
+	@Override
+	public SpannerWriteConverter getSpannerWriteConverter() {
+		return this.entityWriter.getSpannerWriteConverter();
 	}
 
 	@Override
@@ -200,13 +176,13 @@ public class ConverterAwareMappingSpannerEntityProcessor implements SpannerEntit
 		return this.entityReader.read(type, source, includeColumns, allowMissingColumns);
 	}
 
-	@VisibleForTesting
-	SpannerWriteConverter getWriteConverter() {
+	@Override
+	public SpannerWriteConverter getWriteConverter() {
 		return this.writeConverter;
 	}
 
-	@VisibleForTesting
-	SpannerReadConverter getReadConverter() {
+	@Override
+	public SpannerReadConverter getReadConverter() {
 		return this.readConverter;
 	}
 }

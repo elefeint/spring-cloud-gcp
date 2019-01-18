@@ -1,21 +1,22 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.repository.query;
 
+import java.lang.annotation.Annotation;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,7 +26,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
 
-import org.springframework.cloud.gcp.data.spanner.core.SpannerOperations;
+import org.springframework.cloud.gcp.data.spanner.core.SpannerTemplate;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.Column;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.Interleaved;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.PrimaryKey;
@@ -37,7 +38,7 @@ import org.springframework.data.repository.query.Parameters;
 import org.springframework.data.repository.query.QueryMethodEvaluationContextProvider;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -50,11 +51,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
+ * Tests Spanner Query Method lookups.
+ *
  * @author Chengyuan Zhao
  */
 public class SpannerQueryLookupStrategyTests {
 
-	private SpannerOperations spannerOperations;
+	private SpannerTemplate spannerTemplate;
 
 	private SpannerMappingContext spannerMappingContext;
 
@@ -68,12 +71,29 @@ public class SpannerQueryLookupStrategyTests {
 
 	@Before
 	public void initMocks() {
-		this.spannerOperations = mock(SpannerOperations.class);
+		this.spannerTemplate = mock(SpannerTemplate.class);
 		this.spannerMappingContext = new SpannerMappingContext();
 		this.queryMethod = mock(SpannerQueryMethod.class);
 		this.evaluationContextProvider = mock(QueryMethodEvaluationContextProvider.class);
 		this.spelExpressionParser = new SpelExpressionParser();
 		this.spannerQueryLookupStrategy = getSpannerQueryLookupStrategy();
+
+		when(this.queryMethod.getQueryAnnotation()).thenReturn(new Query() {
+			@Override
+			public Class<? extends Annotation> annotationType() {
+				return Query.class;
+			}
+
+			@Override
+			public String value() {
+				return "";
+			}
+
+			@Override
+			public boolean dmlStatement() {
+				return false;
+			}
+		});
 	}
 
 	@Test
@@ -90,7 +110,7 @@ public class SpannerQueryLookupStrategyTests {
 		// @formatter:off
 
 		when(parameters.getNumberOfParameters()).thenReturn(1);
-		when(parameters.getParameter(anyInt())).thenAnswer(invocation -> {
+		when(parameters.getParameter(anyInt())).thenAnswer((invocation) -> {
 			Parameter param = mock(Parameter.class);
 			when(param.getName()).thenReturn(Optional.of("tag"));
 			// @formatter:off
@@ -105,7 +125,7 @@ public class SpannerQueryLookupStrategyTests {
 		this.spannerQueryLookupStrategy.resolveQuery(null, null, null, namedQueries);
 
 		verify(this.spannerQueryLookupStrategy, times(1)).createSqlSpannerQuery(
-				eq(Object.class), same(this.queryMethod), eq(query));
+				eq(Object.class), same(this.queryMethod), eq(query), eq(false));
 	}
 
 	@Test
@@ -124,7 +144,7 @@ public class SpannerQueryLookupStrategyTests {
 	private SpannerQueryLookupStrategy getSpannerQueryLookupStrategy() {
 		SpannerQueryLookupStrategy spannerQueryLookupStrategy = spy(
 				new SpannerQueryLookupStrategy(this.spannerMappingContext,
-						this.spannerOperations, this.evaluationContextProvider,
+						this.spannerTemplate, this.evaluationContextProvider,
 						this.spelExpressionParser));
 		doReturn(Object.class).when(spannerQueryLookupStrategy).getEntityType(any());
 		doReturn(null).when(spannerQueryLookupStrategy).createPartTreeSpannerQuery(any(),
@@ -142,12 +162,11 @@ public class SpannerQueryLookupStrategyTests {
 		Statement statement = SpannerStatementQueryExecutor.getChildrenRowsQuery(
 				Key.newBuilder().append(t.id).append(t.id2).build(),
 				this.spannerMappingContext.getPersistentEntity(ChildEntity.class));
-		assertEquals("SELECT id3 , id , id_2 "
-						+ "FROM child_test_table WHERE id = @tag0 and id_2 = @tag1",
-				statement.getSql());
-		assertEquals(2, statement.getParameters().size());
-		assertEquals("key", statement.getParameters().get("tag0").getString());
-		assertEquals("key2", statement.getParameters().get("tag1").getString());
+		assertThat(statement.getSql())
+				.isEqualTo("SELECT id3 , id , id_2 FROM child_test_table WHERE id = @tag0 and id_2 = @tag1");
+		assertThat(statement.getParameters()).hasSize(2);
+		assertThat(statement.getParameters().get("tag0").getString()).isEqualTo("key");
+		assertThat(statement.getParameters().get("tag1").getString()).isEqualTo("key2");
 	}
 
 	@Table(name = "custom_test_table")

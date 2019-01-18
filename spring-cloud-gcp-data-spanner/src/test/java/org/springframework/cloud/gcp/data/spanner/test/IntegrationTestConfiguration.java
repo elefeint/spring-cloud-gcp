@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.test;
@@ -31,21 +31,29 @@ import org.springframework.cloud.gcp.core.DefaultGcpProjectIdProvider;
 import org.springframework.cloud.gcp.data.spanner.core.SpannerMutationFactory;
 import org.springframework.cloud.gcp.data.spanner.core.SpannerMutationFactoryImpl;
 import org.springframework.cloud.gcp.data.spanner.core.SpannerTemplate;
+import org.springframework.cloud.gcp.data.spanner.core.SpannerTransactionManager;
 import org.springframework.cloud.gcp.data.spanner.core.admin.SpannerDatabaseAdminTemplate;
 import org.springframework.cloud.gcp.data.spanner.core.admin.SpannerSchemaUtils;
 import org.springframework.cloud.gcp.data.spanner.core.convert.ConverterAwareMappingSpannerEntityProcessor;
 import org.springframework.cloud.gcp.data.spanner.core.convert.SpannerEntityProcessor;
+import org.springframework.cloud.gcp.data.spanner.core.it.SpannerTemplateIntegrationTests.TemplateTransactionalService;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerMappingContext;
 import org.springframework.cloud.gcp.data.spanner.repository.config.EnableSpannerRepositories;
+import org.springframework.cloud.gcp.data.spanner.repository.it.SpannerRepositoryIntegrationTests.TradeRepositoryTransactionalService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.PropertySource;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 /**
+ * Configuration for integration tets for Spanner.
+ *
  * @author Balint Pato
+ * @author Chengyuan Zhao
  */
 
 @Configuration
+@EnableTransactionManagement
 @PropertySource("application-test.properties")
 @EnableSpannerRepositories
 public class IntegrationTestConfiguration {
@@ -77,9 +85,19 @@ public class IntegrationTestConfiguration {
 		try {
 			return new DefaultCredentialsProvider(Credentials::new).getCredentials();
 		}
-		catch (IOException e) {
-			throw new RuntimeException(e);
+		catch (IOException ex) {
+			throw new RuntimeException(ex);
 		}
+	}
+
+	@Bean
+	public TemplateTransactionalService templateTransactionalService() {
+		return new TemplateTransactionalService();
+	}
+
+	@Bean
+	public TradeRepositoryTransactionalService tradeRepositoryTransactionalService() {
+		return new TradeRepositoryTransactionalService();
 	}
 
 	@Bean
@@ -120,6 +138,12 @@ public class IntegrationTestConfiguration {
 	@Bean
 	public SpannerEntityProcessor spannerConverter(SpannerMappingContext mappingContext) {
 		return new ConverterAwareMappingSpannerEntityProcessor(mappingContext);
+	}
+
+	@Bean
+	public SpannerTransactionManager spannerTransactionManager(
+			DatabaseClient databaseClient) {
+		return new SpannerTransactionManager(databaseClient);
 	}
 
 	@Bean

@@ -1,24 +1,24 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.repository.query;
 
 import java.lang.reflect.Method;
 
-import org.springframework.cloud.gcp.data.spanner.core.SpannerOperations;
+import org.springframework.cloud.gcp.data.spanner.core.SpannerTemplate;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerMappingContext;
 import org.springframework.data.projection.ProjectionFactory;
 import org.springframework.data.repository.core.NamedQueries;
@@ -31,6 +31,8 @@ import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.util.Assert;
 
 /**
+ * Determines the type of the user's custom-defined Query Methods and instantiates their implementations.
+ *
  * @author Balint Pato
  * @author Chengyuan Zhao
  *
@@ -38,7 +40,7 @@ import org.springframework.util.Assert;
  */
 public class SpannerQueryLookupStrategy implements QueryLookupStrategy {
 
-	private final SpannerOperations spannerOperations;
+	private final SpannerTemplate spannerTemplate;
 
 	private final SpannerMappingContext spannerMappingContext;
 
@@ -47,18 +49,18 @@ public class SpannerQueryLookupStrategy implements QueryLookupStrategy {
 	private SpelExpressionParser expressionParser;
 
 	public SpannerQueryLookupStrategy(SpannerMappingContext spannerMappingContext,
-			SpannerOperations spannerOperations,
+			SpannerTemplate spannerTemplate,
 			QueryMethodEvaluationContextProvider evaluationContextProvider,
 			SpelExpressionParser expressionParser) {
 		Assert.notNull(spannerMappingContext,
 				"A valid SpannerMappingContext is required.");
-		Assert.notNull(spannerOperations, "A valid SpannerOperations is required.");
+		Assert.notNull(spannerTemplate, "A valid SpannerTemplate is required.");
 		Assert.notNull(evaluationContextProvider,
 				"A valid EvaluationContextProvider is required.");
 		Assert.notNull(expressionParser, "A valid SpelExpressionParser is required.");
 		this.spannerMappingContext = spannerMappingContext;
 		this.evaluationContextProvider = evaluationContextProvider;
-		this.spannerOperations = spannerOperations;
+		this.spannerTemplate = spannerTemplate;
 		this.expressionParser = expressionParser;
 	}
 
@@ -77,29 +79,30 @@ public class SpannerQueryLookupStrategy implements QueryLookupStrategy {
 			ProjectionFactory factory, NamedQueries namedQueries) {
 		SpannerQueryMethod queryMethod = createQueryMethod(method, metadata, factory);
 		Class<?> entityType = getEntityType(queryMethod);
+		boolean isDml = queryMethod.getQueryAnnotation() != null && queryMethod.getQueryAnnotation().dmlStatement();
 
 		if (queryMethod.hasAnnotatedQuery()) {
 			String sql = queryMethod.getQueryAnnotation().value();
-			return createSqlSpannerQuery(entityType, queryMethod, sql);
+			return createSqlSpannerQuery(entityType, queryMethod, sql, isDml);
 		}
 		else if (namedQueries.hasQuery(queryMethod.getNamedQueryName())) {
 			String sql = namedQueries.getQuery(queryMethod.getNamedQueryName());
-			return createSqlSpannerQuery(entityType, queryMethod, sql);
+			return createSqlSpannerQuery(entityType, queryMethod, sql, isDml);
 		}
 
 		return createPartTreeSpannerQuery(entityType, queryMethod);
 	}
 
 	<T> SqlSpannerQuery<T> createSqlSpannerQuery(Class<T> entityType,
-			QueryMethod queryMethod, String sql) {
-		return new SqlSpannerQuery<T>(entityType, queryMethod, this.spannerOperations, sql,
+			SpannerQueryMethod queryMethod, String sql, boolean isDml) {
+		return new SqlSpannerQuery<T>(entityType, queryMethod, this.spannerTemplate, sql,
 				this.evaluationContextProvider, this.expressionParser,
-				this.spannerMappingContext);
+				this.spannerMappingContext, isDml);
 	}
 
 	<T> PartTreeSpannerQuery<T> createPartTreeSpannerQuery(Class<T> entityType,
-			QueryMethod queryMethod) {
-		return new PartTreeSpannerQuery<>(entityType, queryMethod, this.spannerOperations,
+			SpannerQueryMethod queryMethod) {
+		return new PartTreeSpannerQuery<>(entityType, queryMethod, this.spannerTemplate,
 				this.spannerMappingContext);
 	}
 }

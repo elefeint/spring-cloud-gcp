@@ -1,35 +1,36 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import java.util.OptionalLong;
+import java.util.Set;
 
 import com.google.cloud.Timestamp;
 import com.google.cloud.spanner.Options.QueryOption;
 
-import org.springframework.data.domain.Sort;
 import org.springframework.util.Assert;
 
 /**
- * Encapsulates Cloud Spanner query options.
+ * Encapsulates Cloud Spanner query options. These are options that are independent of the
+ * SQL being run.
+ *
  * @author Chengyuan Zhao
+ * @author Mike Eltsufin
  *
  * @since 1.1
  */
@@ -37,13 +38,9 @@ public class SpannerQueryOptions {
 
 	private List<QueryOption> queryOptions = new ArrayList<>();
 
-	private Optional<Timestamp> timestamp = Optional.empty();
+	private Timestamp timestamp;
 
-	private OptionalLong limit = OptionalLong.empty();
-
-	private OptionalLong offset = OptionalLong.empty();
-
-	private Sort sort = Sort.unsorted();
+	private Set<String> includeProperties;
 
 	private boolean allowPartialRead;
 
@@ -60,75 +57,22 @@ public class SpannerQueryOptions {
 		return this;
 	}
 
-	public SpannerQueryOptions unsetTimestamp() {
-		this.timestamp = Optional.empty();
-		return this;
+	public Set<String> getIncludeProperties() {
+		return this.includeProperties;
 	}
 
-	public SpannerQueryOptions unsetLimit() {
-		this.limit = OptionalLong.empty();
+	public SpannerQueryOptions setIncludeProperties(Set<String> includeProperties) {
+		this.includeProperties = includeProperties;
 		return this;
-	}
-
-	public SpannerQueryOptions unsetOffset() {
-		this.offset = OptionalLong.empty();
-		return this;
-	}
-
-	public SpannerQueryOptions unsetSort() {
-		this.sort = Sort.unsorted();
-		return this;
-	}
-
-	public boolean hasTimestamp() {
-		return this.timestamp.isPresent();
 	}
 
 	public Timestamp getTimestamp() {
-		if (!hasTimestamp()) {
-			throw new UnsupportedOperationException(
-					"Cannot get timestamp because it hasn't been set.");
-		}
-		return this.timestamp.get();
+		return this.timestamp;
 	}
 
 	public SpannerQueryOptions setTimestamp(Timestamp timestamp) {
 		Assert.notNull(timestamp, "A valid timestamp is required!");
-		this.timestamp = Optional.of(timestamp);
-		return this;
-	}
-
-	public boolean hasLimit() {
-		return this.limit.isPresent();
-	}
-
-	public long getLimit() {
-		if (!hasLimit()) {
-			throw new UnsupportedOperationException(
-					"Cannot get limit because it hasn't been set.");
-		}
-		return this.limit.getAsLong();
-	}
-
-	public SpannerQueryOptions setLimit(long limit) {
-		this.limit = OptionalLong.of(limit);
-		return this;
-	}
-
-	public boolean hasOffset() {
-		return this.offset.isPresent();
-	}
-
-	public long getOffset() {
-		if (!hasOffset()) {
-			throw new UnsupportedOperationException(
-					"Cannot get offset because it hasn't been set.");
-		}
-		return this.offset.getAsLong();
-	}
-
-	public SpannerQueryOptions setOffset(long offset) {
-		this.offset = OptionalLong.of(offset);
+		this.timestamp = timestamp;
 		return this;
 	}
 
@@ -143,16 +87,6 @@ public class SpannerQueryOptions {
 	public SpannerQueryOptions setAllowPartialRead(
 			boolean allowPartialRead) {
 		this.allowPartialRead = allowPartialRead;
-		return this;
-	}
-
-	public Sort getSort() {
-		return this.sort;
-	}
-
-	public SpannerQueryOptions setSort(Sort sort) {
-		Assert.notNull(sort, "A valid sort is required.");
-		this.sort = sort;
 		return this;
 	}
 }

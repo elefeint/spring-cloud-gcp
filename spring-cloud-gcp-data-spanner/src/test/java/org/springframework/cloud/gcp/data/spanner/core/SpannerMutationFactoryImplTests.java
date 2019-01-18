@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core;
@@ -27,7 +27,9 @@ import com.google.cloud.spanner.KeySet;
 import com.google.cloud.spanner.Mutation;
 import com.google.cloud.spanner.Mutation.Op;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 import org.springframework.cloud.gcp.data.spanner.core.admin.SpannerSchemaUtils;
 import org.springframework.cloud.gcp.data.spanner.core.convert.SpannerEntityProcessor;
@@ -39,15 +41,21 @@ import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerDataExcept
 import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerMappingContext;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.Table;
 
-import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 /**
+ * Tests for the Spanner mutation factory implementation.
+ *
  * @author Chengyuan Zhao
  */
 public class SpannerMutationFactoryImplTests {
+
+	/**
+	 * used to check for exception messages and types.
+	 */
+	@Rule
+	public ExpectedException expectedEx = ExpectedException.none();
 
 	private SpannerMappingContext mappingContext;
 
@@ -73,9 +81,9 @@ public class SpannerMutationFactoryImplTests {
 		List<Mutation> mutations = writeFunc.apply(t);
 		t.id = "a";
 		Mutation parentMutation = mutations.get(0);
-		assertEquals(1, mutations.size());
-		assertEquals("custom_test_table", parentMutation.getTable());
-		assertEquals(writeMethod, parentMutation.getOperation());
+		assertThat(mutations).hasSize(1);
+		assertThat(parentMutation.getTable()).isEqualTo("custom_test_table");
+		assertThat(parentMutation.getOperation()).isEqualTo(writeMethod);
 		ChildEntity c1 = new ChildEntity();
 		c1.keyComponents = new EmbeddedKeyComponents();
 		c1.keyComponents.id = t.id;
@@ -87,23 +95,30 @@ public class SpannerMutationFactoryImplTests {
 		t.childEntities = Arrays.asList(c1, c2);
 		mutations = writeFunc.apply(t);
 		parentMutation = mutations.get(0);
-		assertEquals(3, mutations.size());
+		assertThat(mutations).hasSize(3);
 		List<Mutation> childMutations = mutations.subList(1, mutations.size());
-		assertEquals("custom_test_table", parentMutation.getTable());
-		assertEquals(writeMethod, parentMutation.getOperation());
+		assertThat(parentMutation.getTable()).isEqualTo("custom_test_table");
+		assertThat(parentMutation.getOperation()).isEqualTo(writeMethod);
 		for (Mutation childMutation : childMutations) {
-			assertEquals("child_test_table", childMutation.getTable());
-			assertEquals(writeMethod, childMutation.getOperation());
+			assertThat(childMutation.getTable()).isEqualTo("child_test_table");
+			assertThat(childMutation.getOperation()).isEqualTo(writeMethod);
 		}
 	}
 
 	@Test
 	public void insertTest() {
-		executeWriteTest(t -> this.spannerMutationFactory.insert(t), Op.INSERT);
+		executeWriteTest((t) -> this.spannerMutationFactory.insert(t), Op.INSERT);
 	}
 
-	@Test(expected = SpannerDataException.class)
+	@Test
 	public void insertChildrenMismatchIdTest() {
+
+		this.expectedEx.expect(SpannerDataException.class);
+		this.expectedEx.expectMessage("A child entity's common primary key parts with its parent must have " +
+				"the same values. Primary key component 1 does not match for entities: " +
+				"class org.springframework.cloud.gcp.data.spanner.core.SpannerMutationFactoryImplTests$TestEntity " +
+				"class org.springframework.cloud.gcp.data.spanner.core.SpannerMutationFactoryImplTests$ChildEntity");
+
 		TestEntity t = new TestEntity();
 		t.id = "a";
 		ChildEntity c1 = new ChildEntity();
@@ -118,12 +133,12 @@ public class SpannerMutationFactoryImplTests {
 
 	@Test
 	public void updateTest() {
-		executeWriteTest(t -> this.spannerMutationFactory.update(t, null), Op.UPDATE);
+		executeWriteTest((t) -> this.spannerMutationFactory.update(t, null), Op.UPDATE);
 	}
 
 	@Test
 	public void upsertTest() {
-		executeWriteTest(t -> this.spannerMutationFactory.upsert(t, null),
+		executeWriteTest((t) -> this.spannerMutationFactory.upsert(t, null),
 				Op.INSERT_OR_UPDATE);
 	}
 
@@ -136,13 +151,13 @@ public class SpannerMutationFactoryImplTests {
 
 		Mutation mutation = this.spannerMutationFactory.delete(TestEntity.class,
 				Arrays.asList(t1, t2));
-		assertEquals("custom_test_table", mutation.getTable());
-		assertEquals(Op.DELETE, mutation.getOperation());
+		assertThat(mutation.getTable()).isEqualTo("custom_test_table");
+		assertThat(mutation.getOperation()).isEqualTo(Op.DELETE);
 		List<String> keys = new ArrayList<>();
 		mutation.getKeySet().getKeys().forEach((key) -> {
 			keys.add((String) (key.getParts().iterator().next()));
 		});
-		assertThat(keys, containsInAnyOrder(t1.id, t2.id));
+		assertThat(keys).containsExactlyInAnyOrder(t1.id, t2.id);
 	}
 
 	@Test
@@ -151,13 +166,13 @@ public class SpannerMutationFactoryImplTests {
 		t1.id = "key1";
 
 		Mutation mutation = this.spannerMutationFactory.delete(t1);
-		assertEquals("custom_test_table", mutation.getTable());
-		assertEquals(Op.DELETE, mutation.getOperation());
+		assertThat(mutation.getTable()).isEqualTo("custom_test_table");
+		assertThat(mutation.getOperation()).isEqualTo(Op.DELETE);
 		List<String> keys = new ArrayList<>();
 		mutation.getKeySet().getKeys().forEach((key) -> {
 			keys.add((String) (key.getParts().iterator().next()));
 		});
-		assertThat(keys, containsInAnyOrder(t1.id));
+		assertThat(keys).containsExactlyInAnyOrder(t1.id);
 	}
 
 	@Test
@@ -165,26 +180,26 @@ public class SpannerMutationFactoryImplTests {
 		KeySet keySet = KeySet.newBuilder().addKey(Key.of("key1")).addKey(Key.of("key2"))
 				.build();
 		Mutation mutation = this.spannerMutationFactory.delete(TestEntity.class, keySet);
-		assertEquals("custom_test_table", mutation.getTable());
-		assertEquals(Op.DELETE, mutation.getOperation());
+		assertThat(mutation.getTable()).isEqualTo("custom_test_table");
+		assertThat(mutation.getOperation()).isEqualTo(Op.DELETE);
 		List<String> keys = new ArrayList<>();
 		mutation.getKeySet().getKeys().forEach((key) -> {
 			keys.add((String) (key.getParts().iterator().next()));
 		});
-		assertThat(keys, containsInAnyOrder("key1", "key2"));
+		assertThat(keys).containsExactlyInAnyOrder("key1", "key2");
 	}
 
 	@Test
 	public void deleteKeyTest() {
 		Key key = Key.of("key1");
 		Mutation mutation = this.spannerMutationFactory.delete(TestEntity.class, key);
-		assertEquals("custom_test_table", mutation.getTable());
-		assertEquals(Op.DELETE, mutation.getOperation());
+		assertThat(mutation.getTable()).isEqualTo("custom_test_table");
+		assertThat(mutation.getOperation()).isEqualTo(Op.DELETE);
 		List<String> keys = new ArrayList<>();
 		mutation.getKeySet().getKeys().forEach((k) -> {
 			keys.add((String) (k.getParts().iterator().next()));
 		});
-		assertThat(keys, containsInAnyOrder("key1"));
+		assertThat(keys).containsExactlyInAnyOrder("key1");
 	}
 
 	@Table(name = "custom_test_table")

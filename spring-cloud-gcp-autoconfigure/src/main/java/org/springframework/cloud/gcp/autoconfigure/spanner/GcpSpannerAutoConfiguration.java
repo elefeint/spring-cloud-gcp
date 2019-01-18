@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.autoconfigure.spanner;
@@ -35,7 +35,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.cloud.gcp.autoconfigure.core.GcpContextAutoConfiguration;
 import org.springframework.cloud.gcp.core.DefaultCredentialsProvider;
 import org.springframework.cloud.gcp.core.GcpProjectIdProvider;
-import org.springframework.cloud.gcp.core.UsageTrackingHeaderProvider;
+import org.springframework.cloud.gcp.core.UserAgentHeaderProvider;
 import org.springframework.cloud.gcp.data.spanner.core.SpannerMutationFactory;
 import org.springframework.cloud.gcp.data.spanner.core.SpannerMutationFactoryImpl;
 import org.springframework.cloud.gcp.data.spanner.core.SpannerOperations;
@@ -62,6 +62,9 @@ import org.springframework.data.rest.webmvc.spi.BackendIdConverter;
 @EnableConfigurationProperties(GcpSpannerProperties.class)
 public class GcpSpannerAutoConfiguration {
 
+	/**
+	 * Core settings.
+	 */
 	static class CoreSpannerAutoConfiguration {
 
 		private final String projectId;
@@ -94,7 +97,7 @@ public class GcpSpannerAutoConfiguration {
 			this.credentials = (gcpSpannerProperties.getCredentials().hasKey()
 					? new DefaultCredentialsProvider(gcpSpannerProperties)
 					: credentialsProvider).getCredentials();
-			this.projectId = gcpSpannerProperties.getProjectId() != null
+			this.projectId = (gcpSpannerProperties.getProjectId() != null)
 					? gcpSpannerProperties.getProjectId()
 					: projectIdProvider.getProjectId();
 			this.instanceId = gcpSpannerProperties.getInstanceId();
@@ -116,7 +119,7 @@ public class GcpSpannerAutoConfiguration {
 		public SpannerOptions spannerOptions(SessionPoolOptions sessionPoolOptions) {
 			Builder builder = SpannerOptions.newBuilder()
 					.setProjectId(this.projectId)
-					.setHeaderProvider(new UsageTrackingHeaderProvider(this.getClass()))
+					.setHeaderProvider(new UserAgentHeaderProvider(this.getClass()))
 					.setCredentials(this.credentials);
 			if (this.numRpcChannels >= 0) {
 				builder.setNumChannels(this.numRpcChannels);
@@ -222,6 +225,9 @@ public class GcpSpannerAutoConfiguration {
 		}
 	}
 
+	/**
+	 * REST settings.
+	 */
 	@ConditionalOnClass({BackendIdConverter.class, SpannerMappingContext.class})
 	static class SpannerKeyRestSupportAutoConfiguration {
 		@Bean

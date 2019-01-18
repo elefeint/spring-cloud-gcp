@@ -1,57 +1,46 @@
 /*
- *  Copyright 2017 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.stream.binder.pubsub.properties;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.cloud.stream.binder.ExtendedBindingProperties;
+import org.springframework.cloud.stream.binder.AbstractExtendedBindingProperties;
+import org.springframework.cloud.stream.binder.BinderSpecificPropertiesProvider;
 
 /**
+ * Extended binding properties for Pub/Sub.
+ *
  * @author João André Martins
+ * @author Artem Bilan
+ * @author Daniel Zou
  */
 @ConfigurationProperties("spring.cloud.stream.gcp.pubsub")
-public class PubSubExtendedBindingProperties
-		implements ExtendedBindingProperties<PubSubConsumerProperties, PubSubProducerProperties> {
+public class PubSubExtendedBindingProperties extends
+		AbstractExtendedBindingProperties<PubSubConsumerProperties, PubSubProducerProperties, PubSubBindingProperties> {
 
-	private Map<String, PubSubBindingProperties> bindings = new HashMap<>();
+	private static final String DEFAULTS_PREFIX = "spring.cloud.stream.gcp.pubsub.default";
 
-	public Map<String, PubSubBindingProperties> getBindings() {
-		return this.bindings;
+	@Override
+	public String getDefaultsPrefix() {
+		return DEFAULTS_PREFIX;
 	}
 
 	@Override
-	public PubSubConsumerProperties getExtendedConsumerProperties(String channelName) {
-		if (this.bindings.containsKey(channelName)
-				&& this.bindings.get(channelName).getConsumer() != null) {
-			return this.bindings.get(channelName).getConsumer();
-		}
-
-		return new PubSubConsumerProperties();
+	public Class<? extends BinderSpecificPropertiesProvider> getExtendedPropertiesEntryClass() {
+		return PubSubBindingProperties.class;
 	}
 
-	@Override
-	public PubSubProducerProperties getExtendedProducerProperties(String channelName) {
-		if (this.bindings.containsKey(channelName)
-				&& this.bindings.get(channelName).getProducer() != null) {
-			return this.bindings.get(channelName).getProducer();
-		}
-
-		return new PubSubProducerProperties();
-	}
 }

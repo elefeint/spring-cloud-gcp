@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.admin;
@@ -21,7 +21,7 @@ import java.util.OptionalLong;
 
 import com.google.cloud.ByteArray;
 import com.google.cloud.spanner.Key;
-import org.hamcrest.collection.IsIterableContainingInOrder;
+import com.google.spanner.v1.TypeCode;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
@@ -29,7 +29,6 @@ import org.mockito.Mockito;
 import org.springframework.cloud.gcp.data.spanner.core.convert.ConverterAwareMappingSpannerEntityProcessor;
 import org.springframework.cloud.gcp.data.spanner.core.convert.SpannerEntityProcessor;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.Column;
-import org.springframework.cloud.gcp.data.spanner.core.mapping.ColumnLength;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.Embedded;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.Interleaved;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.PrimaryKey;
@@ -37,12 +36,13 @@ import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerMappingCon
 import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerPersistentProperty;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.Table;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
+ * Tests for the Spanner schema utils.
+ *
  * @author Chengyuan Zhao
  */
 public class SpannerSchemaUtilsTests {
@@ -63,18 +63,24 @@ public class SpannerSchemaUtilsTests {
 
 	@Test
 	public void getDropDdlTest() {
-		assertEquals("DROP TABLE custom_test_table",
-				this.spannerSchemaUtils.getDropTableDdlString(TestEntity.class));
+		assertThat(this.spannerSchemaUtils.getDropTableDdlString(TestEntity.class))
+				.isEqualTo("DROP TABLE custom_test_table");
 	}
 
 	@Test
 
 	public void getCreateDdlTest() {
-		assertEquals("CREATE TABLE custom_test_table ( id STRING(MAX) , id3 INT64 , "
-						+ "id_2 STRING(MAX) , bytes2 BYTES(MAX) , custom_col STRING(MAX) , other STRING(333) ,"
-						+ " bytes BYTES(MAX) , bytesList ARRAY<BYTES(111)> , integerList ARRAY<INT64> , "
-						+ "doubles ARRAY<FLOAT64> ) PRIMARY KEY ( id , id_2 , id3 )",
-				this.spannerSchemaUtils.getCreateTableDdlString(TestEntity.class));
+		String ddlResult = "CREATE TABLE custom_test_table ( id STRING(MAX) , id3 INT64 , "
+				+ "id_2 STRING(MAX) , bytes2 BYTES(MAX) , custom_col FLOAT64 NOT NULL , "
+				+ "other STRING(333) , "
+				+ "primitiveDoubleField FLOAT64 , bigDoubleField FLOAT64 , bigLongField INT64 , "
+				+ "primitiveIntField INT64 , bigIntField INT64 , bytes BYTES(MAX) , "
+				+ "bytesList ARRAY<BYTES(111)> , integerList ARRAY<INT64> , "
+				+ "doubles ARRAY<FLOAT64> , commitTimestamp TIMESTAMP OPTIONS (allow_commit_timestamp=true) ) " +
+				"PRIMARY KEY ( id , id_2 , id3 )";
+
+		assertThat(this.spannerSchemaUtils.getCreateTableDdlString(TestEntity.class))
+				.isEqualTo(ddlResult);
 	}
 
 	@Test
@@ -144,9 +150,10 @@ public class SpannerSchemaUtilsTests {
 
 		when(spannerPersistentProperty.getColumnName()).thenReturn(name);
 		when(spannerPersistentProperty.getMaxColumnLength()).thenReturn(length);
-		assertEquals(expectedDDL,
-				this.spannerSchemaUtils.getColumnDdlString(spannerPersistentProperty,
-						this.spannerEntityProcessor));
+		assertThat(
+				this.spannerSchemaUtils.getColumnDdlString(
+						spannerPersistentProperty, this.spannerEntityProcessor))
+								.isEqualTo(expectedDDL);
 	}
 
 	@Test
@@ -156,15 +163,21 @@ public class SpannerSchemaUtilsTests {
 		t.embeddedColumns = new EmbeddedColumns();
 		t.embeddedColumns.id2 = "2";
 		t.id3 = 3L;
-		assertEquals(Key.newBuilder().append(t.id).appendObject(t.embeddedColumns.id2).append(t.id3).build(),
-				this.spannerSchemaUtils.getKey(t));
+
+		Key expectedKey = Key.newBuilder()
+				.append(t.id)
+				.appendObject(t.embeddedColumns.id2)
+				.append(t.id3)
+				.build();
+
+		assertThat(this.spannerSchemaUtils.getKey(t)).isEqualTo(expectedKey);
 	}
 
 	@Test
 	public void getCreateDdlHierarchyTest() {
 		List<String> createStrings = this.spannerSchemaUtils
 				.getCreateTableDdlStringsForInterleavedHierarchy(ParentEntity.class);
-		assertThat(createStrings, IsIterableContainingInOrder.contains(
+		assertThat(createStrings).containsExactly(
 				"CREATE TABLE parent_test_table ( id STRING(MAX) "
 						+ ", id_2 STRING(MAX) , bytes2 BYTES(MAX) , "
 						+ "custom_col STRING(MAX) , other STRING(MAX) ) PRIMARY KEY ( id , id_2 )",
@@ -174,16 +187,17 @@ public class SpannerSchemaUtilsTests {
 						+ "parent_test_table ON DELETE CASCADE",
 				"CREATE TABLE grand_child_test_table ( id STRING(MAX) , id_2 STRING(MAX) , "
 						+ "id3 STRING(MAX) , id4 STRING(MAX) ) PRIMARY KEY ( id , id_2 , id3 , id4 ), "
-						+ "INTERLEAVE IN PARENT child_test_table ON DELETE CASCADE"));
+						+ "INTERLEAVE IN PARENT child_test_table ON DELETE CASCADE");
 	}
 
 	@Test
 	public void getDropDdlHierarchyTest() {
 		List<String> dropStrings = this.spannerSchemaUtils
 				.getDropTableDdlStringsForInterleavedHierarchy(ParentEntity.class);
-		assertThat(dropStrings,
-				IsIterableContainingInOrder.contains("DROP TABLE grand_child_test_table",
-						"DROP TABLE child_test_table", "DROP TABLE parent_test_table"));
+		assertThat(dropStrings).containsExactly(
+				"DROP TABLE grand_child_test_table",
+				"DROP TABLE child_test_table",
+				"DROP TABLE parent_test_table");
 	}
 
 	@Table(name = "custom_test_table")
@@ -198,21 +212,36 @@ public class SpannerSchemaUtilsTests {
 		@Embedded
 		EmbeddedColumns embeddedColumns;
 
-		@Column(name = "custom_col")
+		// Intentionally incompatible column type for testing.
+		@Column(name = "custom_col", spannerTypeMaxLength = 123, spannerType = TypeCode.FLOAT64, nullable = false)
 		String something;
 
-		@ColumnLength(maxLength = 333)
-		@Column(name = "")
+		@Column(name = "", spannerTypeMaxLength = 333)
 		String other;
+
+		double primitiveDoubleField;
+
+		Double bigDoubleField;
+
+		Long bigLongField;
+
+		int primitiveIntField;
+
+		Integer bigIntField;
 
 		ByteArray bytes;
 
-		@ColumnLength(maxLength = 111)
+		@Column(spannerTypeMaxLength = 111)
 		List<ByteArray> bytesList;
 
 		List<Integer> integerList;
 
 		double[] doubles;
+
+		// this is intentionally a double to test that it is forced to be TIMESTAMP on Spanner
+		// anyway
+		@Column(spannerCommitTimestamp = true)
+		double commitTimestamp;
 	}
 
 	private static class EmbeddedColumns {

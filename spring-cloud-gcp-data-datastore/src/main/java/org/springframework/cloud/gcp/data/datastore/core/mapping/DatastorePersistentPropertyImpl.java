@@ -1,24 +1,21 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.datastore.core.mapping;
 
-import java.util.List;
-
-import org.springframework.data.annotation.Reference;
 import org.springframework.data.mapping.Association;
 import org.springframework.data.mapping.PersistentEntity;
 import org.springframework.data.mapping.model.AnnotationBasedPersistentProperty;
@@ -26,7 +23,6 @@ import org.springframework.data.mapping.model.FieldNamingStrategy;
 import org.springframework.data.mapping.model.Property;
 import org.springframework.data.mapping.model.PropertyNameFieldNamingStrategy;
 import org.springframework.data.mapping.model.SimpleTypeHolder;
-import org.springframework.data.util.TypeInformation;
 import org.springframework.util.StringUtils;
 
 /**
@@ -43,7 +39,7 @@ public class DatastorePersistentPropertyImpl
 	private final FieldNamingStrategy fieldNamingStrategy;
 
 	/**
-	 * Constructor
+	 * Constructor.
 	 *
 	 * @param property the property to store
 	 * @param owner the entity to which this property belongs
@@ -55,17 +51,28 @@ public class DatastorePersistentPropertyImpl
 			PersistentEntity<?, DatastorePersistentProperty> owner,
 			SimpleTypeHolder simpleTypeHolder, FieldNamingStrategy fieldNamingStrategy) {
 		super(property, owner, simpleTypeHolder);
-		this.fieldNamingStrategy = fieldNamingStrategy == null
-				? PropertyNameFieldNamingStrategy.INSTANCE
-				: fieldNamingStrategy;
+		this.fieldNamingStrategy = (fieldNamingStrategy != null)
+				? fieldNamingStrategy
+				: PropertyNameFieldNamingStrategy.INSTANCE;
 		verify();
 	}
 
 	private void verify() {
-		if (isEmbedded() && isReference()) {
+		if (hasFieldAnnotation()
+				&& (isDescendants() || isReference())) {
 			throw new DatastoreDataException(
-					"Property cannot be annotated both Embedded and Reference: "
+					"Property cannot be annotated as @Field if it is annotated @Descendants or @Reference: "
 							+ getFieldName());
+		}
+		if (isDescendants() && isReference()) {
+			throw new DatastoreDataException(
+					"Property cannot be annotated both @Descendants and @Reference: "
+							+ getFieldName());
+		}
+		if (isDescendants() && !isCollectionLike()) {
+			throw new DatastoreDataException(
+					"Only collection-like properties can contain the "
+							+ "descendant entity objects can be annotated @Descendants.");
 		}
 	}
 
@@ -77,22 +84,8 @@ public class DatastorePersistentPropertyImpl
 		return this.fieldNamingStrategy.getFieldName(this);
 	}
 
-	@Override
-	public Class<?> getIterableInnerType() {
-		TypeInformation<?> ti = getTypeInformation();
-		List<TypeInformation<?>> typeParams = ti.getTypeArguments();
-		if (typeParams.size() != 1) {
-			throw new DatastoreDataException("in field '" + getFieldName()
-					+ "': Unsupported number of type parameters found: "
-					+ typeParams.size()
-					+ " Only collections of exactly 1 type parameter are supported.");
-		}
-		return typeParams.get(0).getType();
-	}
-
-	@Override
-	public boolean isIterable() {
-		return Iterable.class.isAssignableFrom(getType());
+	private boolean hasFieldAnnotation() {
+		return findAnnotation(Field.class) != null;
 	}
 
 	@Override
@@ -101,13 +94,23 @@ public class DatastorePersistentPropertyImpl
 	}
 
 	@Override
-	public boolean isEmbedded() {
-		return findAnnotation(Embedded.class) != null;
+	public boolean isDescendants() {
+		return findAnnotation(Descendants.class) != null;
 	}
 
 	@Override
 	public boolean isUnindexed() {
 		return findAnnotation(Unindexed.class) != null;
+	}
+
+	@Override
+	public boolean isColumnBacked() {
+		return !isDescendants() && !isReference();
+	}
+
+	@Override
+	public EmbeddedType getEmbeddedType() {
+		return EmbeddedType.of(getTypeInformation());
 	}
 
 	@Override

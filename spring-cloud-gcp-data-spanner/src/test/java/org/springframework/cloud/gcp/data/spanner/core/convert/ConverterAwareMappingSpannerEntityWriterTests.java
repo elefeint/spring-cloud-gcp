@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.convert;
@@ -28,10 +28,14 @@ import com.google.cloud.Timestamp;
 import com.google.cloud.spanner.Key;
 import com.google.cloud.spanner.Mutation;
 import com.google.cloud.spanner.Mutation.WriteBuilder;
+import com.google.cloud.spanner.Value;
 import com.google.cloud.spanner.ValueBinder;
 import com.google.common.collect.ImmutableSet;
+import com.google.spanner.v1.TypeCode;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.runners.Parameterized;
 
 import org.springframework.cloud.gcp.data.spanner.core.convert.TestEntities.ChildTestEntity;
@@ -39,11 +43,12 @@ import org.springframework.cloud.gcp.data.spanner.core.convert.TestEntities.Faul
 import org.springframework.cloud.gcp.data.spanner.core.convert.TestEntities.FaultyTestEntity2;
 import org.springframework.cloud.gcp.data.spanner.core.convert.TestEntities.TestEmbeddedColumns;
 import org.springframework.cloud.gcp.data.spanner.core.convert.TestEntities.TestEntity;
+import org.springframework.cloud.gcp.data.spanner.core.mapping.Column;
+import org.springframework.cloud.gcp.data.spanner.core.mapping.PrimaryKey;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerDataException;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerMappingContext;
 
-import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -57,10 +62,18 @@ import static org.mockito.Mockito.verifyZeroInteractions;
 import static org.mockito.Mockito.when;
 
 /**
+ * Tests for the conversion and mapping of entities for write.
+ *
  * @author Chengyuan Zhao
  * @author Balint Pato
  */
 public class ConverterAwareMappingSpannerEntityWriterTests {
+
+	/**
+	 * used for checking exception messages and types.
+	 */
+	@Rule
+	public ExpectedException expectedEx = ExpectedException.none();
 
 	private SpannerEntityWriter spannerEntityWriter;
 
@@ -78,7 +91,11 @@ public class ConverterAwareMappingSpannerEntityWriterTests {
 	public void writeTest() {
 		TestEntity t = new TestEntity();
 		t.id = "key1";
-		t.stringField = "string";
+		t.enumField = TestEntity.Color.WHITE;
+
+		// any positive time value will do.
+		t.commitTimestamp = Timestamp.ofTimeMicroseconds(1000);
+
 		t.booleanField = true;
 		t.intField = 123;
 		t.longField = 3L;
@@ -163,7 +180,7 @@ public class ConverterAwareMappingSpannerEntityWriterTests {
 		when(writeBuilder.set(eq("intField2"))).thenReturn(intField2Binder);
 
 		ValueBinder<WriteBuilder> longFieldBinder = mock(ValueBinder.class);
-		when(longFieldBinder.to(anyLong())).thenReturn(null);
+		when(longFieldBinder.to(anyString())).thenReturn(null);
 		when(writeBuilder.set(eq("longField"))).thenReturn(longFieldBinder);
 
 		ValueBinder<WriteBuilder> doubleFieldBinder = mock(ValueBinder.class);
@@ -171,7 +188,7 @@ public class ConverterAwareMappingSpannerEntityWriterTests {
 		when(writeBuilder.set(eq("doubleField"))).thenReturn(doubleFieldBinder);
 
 		ValueBinder<WriteBuilder> doubleArrayFieldBinder = mock(ValueBinder.class);
-		when(doubleArrayFieldBinder.toFloat64Array((double[]) any())).thenReturn(null);
+		when(doubleArrayFieldBinder.toStringArray(any())).thenReturn(null);
 		when(writeBuilder.set(eq("doubleArray"))).thenReturn(doubleArrayFieldBinder);
 
 		ValueBinder<WriteBuilder> doubleListFieldBinder = mock(ValueBinder.class);
@@ -189,7 +206,7 @@ public class ConverterAwareMappingSpannerEntityWriterTests {
 		when(writeBuilder.set(eq("booleanList"))).thenReturn(booleanListFieldBinder);
 
 		ValueBinder<WriteBuilder> longListFieldBinder = mock(ValueBinder.class);
-		when(longListFieldBinder.toInt64Array((Iterable<Long>) any())).thenReturn(null);
+		when(longListFieldBinder.toStringArray(any())).thenReturn(null);
 		when(writeBuilder.set(eq("longList"))).thenReturn(longListFieldBinder);
 
 		ValueBinder<WriteBuilder> timestampListFieldBinder = mock(ValueBinder.class);
@@ -220,22 +237,26 @@ public class ConverterAwareMappingSpannerEntityWriterTests {
 		when(bytesFieldBinder.to((ByteArray) any())).thenReturn(null);
 		when(writeBuilder.set(eq("bytes"))).thenReturn(bytesFieldBinder);
 
+		ValueBinder<WriteBuilder> commitTimestampBinder = mock(ValueBinder.class);
+		when(commitTimestampBinder.to((Timestamp) any())).thenReturn(null);
+		when(writeBuilder.set(eq("commitTimestamp"))).thenReturn(commitTimestampBinder);
+
 		this.spannerEntityWriter.write(t, writeBuilder::set);
 
 		verify(idBinder, times(1)).to(eq(t.id));
 		verify(id2Binder, times(1)).to(eq(t.testEmbeddedColumns.id2));
 		verify(id3Binder, times(1)).to(eq(t.testEmbeddedColumns.id3));
-		verify(stringFieldBinder, times(1)).to(eq(t.stringField));
+		verify(stringFieldBinder, times(1)).to(eq(t.enumField.toString()));
 		verify(booleanFieldBinder, times(1)).to(eq(Boolean.valueOf(t.booleanField)));
 		verify(intFieldBinder, times(1)).to(eq(Long.valueOf(t.intField)));
 		verify(intField2Binder, times(1)).to(eq(Long.valueOf(t.testEmbeddedColumns.intField2)));
-		verify(longFieldBinder, times(1)).to(eq(Long.valueOf(t.longField)));
+		verify(longFieldBinder, times(1)).to(eq(String.valueOf(t.longField)));
 		verify(doubleFieldBinder, times(1)).to(eq(Double.valueOf(t.doubleField)));
-		verify(doubleArrayFieldBinder, times(1)).toFloat64Array(eq(t.doubleArray));
+		verify(doubleArrayFieldBinder, times(1)).to("3.33,3.33,3.33");
 		verify(doubleListFieldBinder, times(1)).toFloat64Array(eq(t.doubleList));
 		verify(stringListFieldBinder, times(1)).toStringArray(eq(t.stringList));
 		verify(booleanListFieldBinder, times(1)).toBoolArray(eq(t.booleanList));
-		verify(longListFieldBinder, times(1)).toInt64Array(eq(t.longList));
+		verify(longListFieldBinder, times(1)).toStringArray(any());
 		verify(timestampListFieldBinder, times(1)).toTimestampArray(eq(t.timestampList));
 		verify(dateListFieldBinder, times(1)).toDateArray(eq(t.dateList));
 		verify(bytesListFieldBinder, times(1)).toBytesArray(eq(t.bytesList));
@@ -243,6 +264,11 @@ public class ConverterAwareMappingSpannerEntityWriterTests {
 		verify(timestampFieldBinder, times(1)).to(eq(t.timestampField));
 		verify(bytesFieldBinder, times(1)).to(eq(t.bytes));
 		verify(instantListFieldBinder, times(1)).toTimestampArray(eq(timestamps));
+
+		// the positive value set earlier must not be passed to Spanner. it must be replaced by
+		// the dummy value.
+		verify(commitTimestampBinder, times(1)).to(eq(Value.COMMIT_TIMESTAMP));
+
 	}
 
 	@Test
@@ -275,7 +301,7 @@ public class ConverterAwareMappingSpannerEntityWriterTests {
 	public void writeSomeColumnsTest() throws ClassNotFoundException {
 		TestEntity t = new TestEntity();
 		t.id = "key1";
-		t.stringField = "string";
+		t.enumField = TestEntity.Color.BLACK;
 
 		WriteBuilder writeBuilder = mock(WriteBuilder.class);
 
@@ -295,36 +321,60 @@ public class ConverterAwareMappingSpannerEntityWriterTests {
 				new HashSet<>(Arrays.asList("id", "custom_col")));
 
 		verify(idBinder, times(1)).to(eq(t.id));
-		verify(stringFieldBinder, times(1)).to(eq(t.stringField));
+		verify(stringFieldBinder, times(1)).to(eq(t.enumField.toString()));
 		verifyZeroInteractions(booleanFieldBinder);
 	}
 
-	@Test(expected = SpannerDataException.class)
+	@Test
 	public void writeUnsupportedTypeIterableTest() {
+		this.expectedEx.expect(SpannerDataException.class);
+		this.expectedEx.expectMessage("Unsupported mapping for type: class java.util.ArrayList");
 		FaultyTestEntity2 ft = new FaultyTestEntity2();
 		ft.listWithUnsupportedInnerType = new ArrayList<TestEntity>();
 		WriteBuilder writeBuilder = Mutation.newInsertBuilder("faulty_test_table_2");
 		this.spannerEntityWriter.write(ft, writeBuilder::set);
 	}
 
-	@Test(expected = SpannerDataException.class)
+	@Test
 	public void writeIncompatibleTypeTest() {
+		this.expectedEx.expect(SpannerDataException.class);
+		this.expectedEx.expectMessage("Unsupported mapping for type: " +
+				"class org.springframework.cloud.gcp.data.spanner.core.convert.TestEntities$TestEntity");
 		FaultyTestEntity ft = new FaultyTestEntity();
 		ft.fieldWithUnsupportedType = new TestEntity();
 		WriteBuilder writeBuilder = Mutation.newInsertBuilder("faulty_test_table");
 		this.spannerEntityWriter.write(ft, writeBuilder::set);
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void writingNullToKeyShouldThrowException() {
-		this.spannerEntityWriter.writeToKey(null);
+		this.expectedEx.expect(IllegalArgumentException.class);
+		this.expectedEx.expectMessage("Key of an entity to be written cannot be null!");
+		this.spannerEntityWriter.convertToKey(null);
 	}
 
 	@Test
 	@Parameterized.Parameters
 	public void writeValidColumnToKey() {
-		Key key = this.spannerEntityWriter.writeToKey(true);
-		assertThat(key, is(Key.of(true)));
+		Key key = this.spannerEntityWriter.convertToKey(true);
+		assertThat(key).isEqualTo(Key.of(true));
 	}
 
+	@Test
+	public void testUserSetUnconvertableColumnType() {
+		this.expectedEx.expect(SpannerDataException.class);
+		this.expectedEx.expectMessage("Unsupported mapping for type: class java.lang.Boolean");
+		UserSetUnconvertableColumnType userSetUnconvertableColumnType = new UserSetUnconvertableColumnType();
+		WriteBuilder writeBuilder = Mutation.newInsertBuilder("faulty_test_table");
+		this.spannerEntityWriter.write(userSetUnconvertableColumnType, writeBuilder::set);
+	}
+
+	/**
+	 * A test type that cannot be converted.
+	 */
+	static class UserSetUnconvertableColumnType {
+		@PrimaryKey
+		@Column(spannerType = TypeCode.DATE)
+		boolean id;
+	}
 }

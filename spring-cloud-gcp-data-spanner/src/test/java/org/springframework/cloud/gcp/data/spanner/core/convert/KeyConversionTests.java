@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.convert;
@@ -32,12 +32,13 @@ import org.junit.runners.Parameterized;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerDataException;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerMappingContext;
 
-import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
+ * Tests for converting Spanner keys.
+ *
  * @author Balint Pato
+ * @author Chengyuan Zhao
  */
 @RunWith(Parameterized.class)
 public class KeyConversionTests {
@@ -87,12 +88,13 @@ public class KeyConversionTests {
 	@Test
 	public void keyWritingTestCase() {
 		try {
-			Key key = this.spannerEntityWriter.writeToKey(this.objectToTest);
-			assertThat(key, is(this.expectedResult));
+			Key key = this.spannerEntityWriter.convertToKey(this.objectToTest);
+			assertThat(key).isEqualTo(this.expectedResult);
 		}
-		catch (Exception e) {
-			assertTrue("Unexpected exception: " + e + "\nexpected: " + this.expectedResult,
-					e.getClass().equals(this.expectedResult));
+		catch (Exception ex) {
+			assertThat(ex.getClass())
+					.as("Unexpected exception: " + ex + "\nexpected: " + this.expectedResult)
+					.isEqualTo(this.expectedResult);
 		}
 	}
 

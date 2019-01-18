@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.pubsub.core.subscriber;
@@ -44,7 +44,12 @@ import org.springframework.util.concurrent.ListenableFuture;
 public interface PubSubSubscriberOperations {
 
 	/**
+	 * Subscribe to a subscription with a given message receiver.
+	 *
 	 * @deprecated as of 1.1, use {@link #subscribe(String, Consumer)} instead.
+	 * @param messageReceiver the message receiver with which to subscribe
+	 * @param subscription the subscription to subscribe to
+	 * @return the subscriber
 	 */
 	@Deprecated
 	Subscriber subscribe(String subscription, MessageReceiver messageReceiver);
@@ -66,6 +71,7 @@ public interface PubSubSubscriberOperations {
 	 * @param subscription the name of an existing subscription
 	 * @param messageConsumer the callback method triggered when new messages arrive
 	 * @param payloadType the type to which the payload of the Pub/Sub message should be converted
+	 * @param <T> the type of the payload
 	 * @return subscriber listening to new messages
 	 * @since 1.1
 	 */
@@ -100,6 +106,7 @@ public interface PubSubSubscriberOperations {
 	 * @param returnImmediately returns immediately even if subscription doesn't contain enough
 	 * messages to satisfy {@code maxMessages}
 	 * @param payloadType the type to which the payload of the Pub/Sub messages should be converted
+	 * @param <T> the type of the payload
 	 * @return the list of received acknowledgeable messages
 	 * @since 1.1
 	 */
@@ -115,23 +122,21 @@ public interface PubSubSubscriberOperations {
 	PubsubMessage pullNext(String subscription);
 
 	/**
-	 * Acknowledge a batch of messages. The messages must have the same project id and be from the same subscription.
+	 * Acknowledge a batch of messages. The messages must have the same project id.
 	 * @param acknowledgeablePubsubMessages messages to be acknowledged
 	 * @return {@code ListenableFuture<Void>} the ListenableFuture for the asynchronous execution
 	 */
 	ListenableFuture<Void> ack(Collection<AcknowledgeablePubsubMessage> acknowledgeablePubsubMessages);
 
 	/**
-	 * Negatively acknowledge a batch of messages. The messages must have the same project id and be from the same
-	 * subscription.
+	 * Negatively acknowledge a batch of messages. The messages must have the same project id.
 	 * @param acknowledgeablePubsubMessages messages to be negatively acknowledged
 	 * @return {@code ListenableFuture<Void>} the ListenableFuture for the asynchronous execution
 	 */
 	ListenableFuture<Void> nack(Collection<AcknowledgeablePubsubMessage> acknowledgeablePubsubMessages);
 
 	/**
-	 * Modify the ack deadline of a batch of messages. The messages must have the same project id and be from the
-	 * same subscription.
+	 * Modify the ack deadline of a batch of messages. The messages must have the same project id.
 	 * @param acknowledgeablePubsubMessages messages to be modified
 	 * @param ackDeadlineSeconds the new ack deadline in seconds. A deadline of 0 effectively nacks the messages.
 	 * @return {@code ListenableFuture<Void>} the ListenableFuture for the asynchronous execution

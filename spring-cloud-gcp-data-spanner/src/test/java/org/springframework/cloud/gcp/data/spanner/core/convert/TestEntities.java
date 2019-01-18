@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.convert;
@@ -23,6 +23,7 @@ import com.google.cloud.ByteArray;
 import com.google.cloud.Date;
 import com.google.cloud.Timestamp;
 import com.google.cloud.spanner.Struct;
+import com.google.spanner.v1.TypeCode;
 
 import org.springframework.cloud.gcp.data.spanner.core.mapping.Column;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.Embedded;
@@ -31,11 +32,16 @@ import org.springframework.cloud.gcp.data.spanner.core.mapping.PrimaryKey;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.Table;
 
 /**
+ * Test entities for Spanner tests that hit many features and situations.
+ *
  * @author Chengyuan Zhao
  * @author Balint Pato
  */
 public class TestEntities {
 
+	/**
+	 * Test domain type holding properties with many types and key components.
+	 */
 	@Table(name = "custom_test_table")
 	static class TestEntity {
 		@PrimaryKey
@@ -49,15 +55,19 @@ public class TestEntities {
 		TestEmbeddedColumns testEmbeddedColumns;
 
 		@Column(name = "custom_col")
-		String stringField;
+		Color enumField;
 
 		@Column(name = "")
 		boolean booleanField;
 
+		// This long is forced to be stored as a String for testing
+		@Column(spannerType = TypeCode.STRING)
 		long longField;
 
 		double doubleField;
 
+		// This double array is forced to be stored as a String for testing
+		@Column(spannerType = TypeCode.STRING)
 		double[] doubleArray;
 
 		// int is not a native Cloud Spanner type, so this will utilize custom conversions.
@@ -69,6 +79,8 @@ public class TestEntities {
 
 		List<Boolean> booleanList;
 
+		// This long list is forced to be stored as a String for testing
+		@Column(spannerType = TypeCode.STRING)
 		List<Long> longList;
 
 		List<Timestamp> timestampList;
@@ -87,8 +99,22 @@ public class TestEntities {
 
 		@Interleaved
 		List<ChildTestEntity> childTestEntities;
+
+		/**
+		 * A enum used to test conversion and storage.
+		 */
+		enum Color {
+			WHITE,
+			BLACK
+		}
+
+		@Column(spannerCommitTimestamp = true)
+		Timestamp commitTimestamp;
 	}
 
+	/**
+	 * A test entity that acts as a child of another entity.
+	 */
 	static class ChildTestEntity {
 		@PrimaryKey
 		String id;
@@ -104,6 +130,9 @@ public class TestEntities {
 		String id5;
 	}
 
+	/**
+	 * A test class that holds key components while being embedded.
+	 */
 	static class TestEmbeddedColumns {
 		@PrimaryKey
 		String id2;
@@ -114,6 +143,9 @@ public class TestEntities {
 		int intField2;
 	}
 
+	/**
+	 * A fault class with a bad property type.
+	 */
 	@Table(name = "faulty_test_table")
 	static class FaultyTestEntity {
 		@PrimaryKey
@@ -122,6 +154,9 @@ public class TestEntities {
 		TestEntity fieldWithUnsupportedType;
 	}
 
+	/**
+	 * A fault class with unsupported list property type.
+	 */
 	@Table(name = "faulty_test_table_2")
 	static class FaultyTestEntity2 {
 		@PrimaryKey
@@ -130,6 +165,9 @@ public class TestEntities {
 		List<TestEntity> listWithUnsupportedInnerType;
 	}
 
+	/**
+	 * A test class that holds an inner collection of entities.
+	 */
 	@Table(name = "outer_test_entity")
 	static class OuterTestEntity {
 		@PrimaryKey
@@ -138,6 +176,9 @@ public class TestEntities {
 		List<InnerTestEntity> innerTestEntities;
 	}
 
+	/**
+	 * A test class that holds Structs inside.
+	 */
 	@Table(name = "outer_test_entity")
 	static class OuterTestHoldingStructsEntity {
 		@PrimaryKey
@@ -146,6 +187,9 @@ public class TestEntities {
 		List<Struct> innerStructs;
 	}
 
+	/**
+	 * A test class that holds a single inner Struct.
+	 */
 	@Table(name = "outer_test_entity")
 	static class OuterTestHoldingStructEntity {
 		@PrimaryKey
@@ -154,6 +198,9 @@ public class TestEntities {
 		Struct innerStruct;
 	}
 
+	/**
+	 * A test class that holds a single inner simple type collection property.
+	 */
 	@Table(name = "outer_test_entity_flat")
 	static class OuterTestEntityFlat {
 		@PrimaryKey
@@ -162,6 +209,9 @@ public class TestEntities {
 		List<Integer> innerLengths;
 	}
 
+	/**
+	 * A test class that holds a single simple property.
+	 */
 	@Table(name = "outer_test_entity_flat_faulty")
 	static class OuterTestEntityFlatFaulty {
 		@PrimaryKey
@@ -170,6 +220,9 @@ public class TestEntities {
 		Integer innerLengths;
 	}
 
+	/**
+	 * A test entity that tests a single property without a value.
+	 */
 	static class InnerTestEntity {
 		@PrimaryKey
 		String value;
@@ -177,6 +230,9 @@ public class TestEntities {
 		String missingColumnValue;
 	}
 
+	/**
+	 * A test class to test Spring Data's constructor support.
+	 */
 	static class SimpleConstructorTester {
 		@PrimaryKey
 		final String id;
@@ -186,11 +242,17 @@ public class TestEntities {
 		}
 	}
 
+	/**
+	 * A class with a list that doesn't have an explicit param type.
+	 */
 	static class TestEntityWithListWithZeroTypeArgs {
 		@PrimaryKey
 		List zeroArgsListOfObjects;
 	}
 
+	/**
+	 * A test classs that uses a complex constructor.
+	 */
 	@Table(name = "outer_test_entity")
 	static class OuterTestEntityWithConstructor {
 		@PrimaryKey
@@ -204,6 +266,9 @@ public class TestEntities {
 		}
 	}
 
+	/**
+	 * A test class with a partial constructor meant to test Spring Data's constructor support.
+	 */
 	@Table(name = "custom_test_table")
 	static class PartialConstructor {
 		@PrimaryKey

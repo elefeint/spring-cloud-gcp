@@ -1,24 +1,27 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.datastore.core;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.function.Function;
 
-import com.google.cloud.datastore.Entity;
+import com.google.cloud.datastore.BaseEntity;
+import com.google.cloud.datastore.Key;
 import com.google.cloud.datastore.Query;
 
 /**
@@ -43,19 +46,26 @@ public interface DatastoreOperations {
 	<T> T findById(Object id, Class<T> entityClass);
 
 	/**
-	 * Saves an instance of an object to Cloud Datastore. Behaves as update or insert.
+	 * Saves an instance of an object to Cloud Datastore.
+	 * Behaves as update or insert.
+	 * Ancestors can be added only to entries with Key ids.
 	 * @param instance the instance to save.
+	 * @param ancestors ancestors that should be added to the entry
+	 * @param <T> the type of the object to save
 	 * @return the instance that was saved.
 	 */
-	<T> T save(T instance);
+	<T> T save(T instance, Key... ancestors);
 
 	/**
-	 * Saves multiple instances of objects to Cloud Datastore. Behaves as update or
-	 * insert.
+	 * Saves multiple instances of objects to Cloud Datastore.
+	 * Behaves as update or insert.
+	 * Ancestors can be added only to entries with Key ids.
 	 * @param entities the objects to save.
+	 * @param ancestors ancestors that should be added to each entry
+	 * @param <T> the type of entities to save
 	 * @return the entities that were saved.
 	 */
-	<T> Iterable<T> saveAll(Iterable<T> entities);
+	<T> Iterable<T> saveAll(Iterable<T> entities, Key... ancestors);
 
 	/**
 	 * Delete an entity from Cloud Datastore. Deleting IDs that do not exist in Cloud
@@ -131,7 +141,25 @@ public interface DatastoreOperations {
 	 * @return a list of the objects found. If no keys could be found the list will be
 	 * empty.
 	 */
-	<T> Iterable<T> query(Query<Entity> query, Class<T> entityClass);
+	<T> Iterable<T> query(Query<? extends BaseEntity> query, Class<T> entityClass);
+
+	/**
+	 * Runs given query and applies given function to each entity in the result.
+	 * @param query the query to run.
+	 * @param entityFunc the function to apply to each found entity or key.
+	 * @param <A> the row type of the query. This type can be either {@code Key} or a
+	 * Cloud Datastore entity.
+	 * @param <T> the type to map each entity or key to.
+	 * @return the mapped entities or keys.
+	 */
+	<A, T> Iterable<T> query(Query<A> query, Function<A, T> entityFunc);
+
+	/**
+	 * Finds Cloud Datastore Keys by using a Cloud Datastore query.
+	 * @param query the query to execute that retrieves only Keys.
+	 * @return the list of keys found.
+	 */
+	Iterable<Key> queryKeys(Query<Key> query);
 
 	/**
 	 * Get all the entities of the given domain type.
@@ -140,6 +168,15 @@ public interface DatastoreOperations {
 	 * @return the entities that were found.
 	 */
 	<T> Iterable<T> findAll(Class<T> entityClass);
+
+	/**
+	 * Get all the entities of the given domain type applying limit, offset and sort.
+	 * @param entityClass the domain type to get.
+	 * @param queryOptions query options
+	 * @param <T> the type param of the domain type.
+	 * @return the entities that were found.
+	 */
+	<T> Collection<T> findAll(Class<T> entityClass, DatastoreQueryOptions queryOptions);
 
 	/**
 	 * Check if the given ID belongs to an entity in Cloud Datastore. If this is actually
@@ -161,4 +198,31 @@ public interface DatastoreOperations {
 	 * @return the final result of the transaction.
 	 */
 	<A> A performTransaction(Function<DatastoreOperations, A> operations);
+
+	/**
+	 * Get a Datastore entity based on a id and convert it to a map.
+	 * @param key the key of the entity
+	 * @param valueType type values should be converted to
+	 * @param <T> the value type of the map
+	 * @return if an entity for a given key exists, returns the map representation of it,
+	 * {@code null} otherwise
+	 */
+	<T> Map<String, T> findByIdAsMap(Key key, Class<T> valueType);
+
+	/**
+	 * Save a map as a Datastore entity, using map keys as field names.
+	 * @param key the key for the entity
+	 * @param <V> the value type of the map to write
+	 * @param map a map
+	 */
+	<V> void writeMap(Key key, Map<String, V> map);
+
+	/**
+	 * Create a {@link com.google.cloud.datastore.Key} from kind name and id.
+	 * @param kind the Cloud Datastore kind name
+	 * @param id object to be used as id; if it is a Long, the value is used, otherwise it is
+	 * converted to String
+	 * @return created key
+	 */
+	Key createKey(String kind, Object id);
 }

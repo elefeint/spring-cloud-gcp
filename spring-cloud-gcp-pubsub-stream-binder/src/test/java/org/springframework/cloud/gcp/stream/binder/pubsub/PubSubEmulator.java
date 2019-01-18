@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.stream.binder.pubsub;
@@ -29,6 +29,7 @@ import java.nio.file.WatchService;
 import java.util.Optional;
 import java.util.StringTokenizer;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -43,6 +44,7 @@ import static org.junit.Assume.assumeTrue;
  * Tests can access the emulator's host/port combination by calling {@link #getEmulatorHostPort()} method.
  *
  * @author Elena Felder
+ * @author Mike Eltsufin
  *
  * @since 1.1
  */
@@ -101,45 +103,62 @@ public class PubSubEmulator extends ExternalResource {
 	 */
 	@Override
 	protected void after() {
-		if (this.emulatorProcess == null) {
+		findAndDestroyEmulator();
+	}
+
+	private void findAndDestroyEmulator() {
+		// destroy gcloud process
+		if (this.emulatorProcess != null) {
+			this.emulatorProcess.destroy();
+		}
+		else {
 			LOGGER.warn("Emulator process null after tests; nothing to terminate.");
-			return;
 		}
 
-		this.emulatorProcess.destroy();
-
+		// find destory emulator process spawned by gcloud
 		if (this.emulatorHostPort == null) {
 			LOGGER.warn("Host/port null after the test.");
-			return;
 		}
-
-		try {
-			int portSeparatorIndex = this.emulatorHostPort.indexOf(":");
-			if (portSeparatorIndex < 0 || !this.emulatorHostPort.contains("localhost")) {
+		else {
+			int portSeparatorIndex = this.emulatorHostPort.lastIndexOf(":");
+			if (portSeparatorIndex < 0) {
 				LOGGER.warn("Malformed host: " + this.emulatorHostPort);
 				return;
 			}
+
 			String emulatorHost = this.emulatorHostPort.substring(0, portSeparatorIndex);
 			String emulatorPort = this.emulatorHostPort.substring(portSeparatorIndex + 1);
 
+			AtomicBoolean foundEmulatorProcess = new AtomicBoolean(false);
 			String hostPortParams = String.format("--host=%s --port=%s", emulatorHost, emulatorPort);
-			Process psProcess = new ProcessBuilder("ps", "-v").start();
+			try {
+				Process psProcess = new ProcessBuilder("ps", "-vx").start();
 
-			try (BufferedReader br = new BufferedReader(new InputStreamReader(psProcess.getInputStream()))) {
-				br.lines()
-						.filter(psLine -> psLine.contains(hostPortParams))
-						.map(psLine -> new StringTokenizer(psLine).nextToken())
-						.forEach(this::killProcess);
+				try (BufferedReader br = new BufferedReader(new InputStreamReader(psProcess.getInputStream()))) {
+					br.lines()
+							.filter((psLine) -> psLine.contains(hostPortParams))
+							.map((psLine) -> new StringTokenizer(psLine).nextToken())
+							.forEach((p) -> {
+								LOGGER.info("Found emulator process to kill: " + p);
+								this.killProcess(p);
+								foundEmulatorProcess.set(true);
+							});
+				}
+
+				if (!foundEmulatorProcess.get()) {
+					LOGGER.warn("Did not find the emualtor process to kill based on: " + hostPortParams);
+				}
 			}
-		}
-		catch (IOException e) {
-			LOGGER.warn("Failed to cleanup: ", e);
+			catch (IOException ex) {
+				LOGGER.warn("Failed to cleanup: ", ex);
+			}
 		}
 	}
 
 	/**
-	 * Return the already-started emulator's host/port combination when called from within a JUnit method.
-	 * @return Emulator host/port string or null if emulator setup failed.
+	 * Return the already-started emulator's host/port combination when called from within a
+	 * JUnit method.
+	 * @return emulator host/port string or null if emulator setup failed.
 	 */
 	public String getEmulatorHostPort() {
 		return this.emulatorHostPort;
@@ -158,7 +177,7 @@ public class PubSubEmulator extends ExternalResource {
 			this.emulatorProcess = new ProcessBuilder("gcloud", "beta", "emulators", "pubsub", "start")
 					.start();
 		}
-		catch (IOException e) {
+		catch (IOException ex) {
 			fail("Gcloud not found; leaving host/port uninitialized.");
 		}
 
@@ -174,6 +193,8 @@ public class PubSubEmulator extends ExternalResource {
 
 	/**
 	 * Extract host/port from output of env-init command: "export PUBSUB_EMULATOR_HOST=localhost:8085".
+	 * @throws IOException for IO errors
+	 * @throws InterruptedException for interruption errors
 	 */
 	private void determineHostPort() throws IOException, InterruptedException {
 		Process envInitProcess = new ProcessBuilder("gcloud", "beta", "emulators", "pubsub", "env-init").start();
@@ -206,6 +227,7 @@ public class PubSubEmulator extends ExternalResource {
 	/**
 	 * Wait until a PubSub emulator configuration file is updated.
 	 * Fail if the file does not update after 1 second.
+	 * @param watchService the watch-service to poll
 	 * @throws InterruptedException which should interrupt the peaceful slumber and bubble up
 	 * to fail the test.
 	 */
@@ -216,8 +238,8 @@ public class PubSubEmulator extends ExternalResource {
 
 			if (key != null) {
 				Optional<Path> configFilePath = key.pollEvents().stream()
-						.map(event -> (Path) event.context())
-						.filter(path -> ENV_FILE_NAME.equals(path.toString()))
+						.map((event) -> (Path) event.context())
+						.filter((path) -> ENV_FILE_NAME.equals(path.toString()))
 						.findAny();
 				if (configFilePath.isPresent()) {
 					return;
@@ -231,13 +253,13 @@ public class PubSubEmulator extends ExternalResource {
 	/**
 	 * Attempt to kill a process on best effort basis.
 	 * Failure is logged and ignored, as it is not critical to the tests' functionality.
-	 * @param pid Presumably a valid PID. No checking done to validate.
+	 * @param pid presumably a valid PID. No checking done to validate.
 	 */
 	private void killProcess(String pid) {
 		try {
 			new ProcessBuilder("kill", pid).start();
 		}
-		catch (IOException e) {
+		catch (IOException ex) {
 			LOGGER.warn("Failed to clean up PID " + pid);
 		}
 	}

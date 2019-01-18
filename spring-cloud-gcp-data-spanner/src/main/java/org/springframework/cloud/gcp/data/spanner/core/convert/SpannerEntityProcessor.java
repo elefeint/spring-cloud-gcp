@@ -1,23 +1,22 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.convert;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 import com.google.cloud.spanner.ResultSet;
@@ -36,38 +35,38 @@ public interface SpannerEntityProcessor extends SpannerEntityReader, SpannerEnti
 
 	/**
 	 * Converts a set of Spanner {@link ResultSet} into a list of objects.
-	 * @param resultSet The Spanner results to convert. The ResultSet will be exhausted and
+	 * @param resultSet the Spanner results to convert. The ResultSet will be exhausted and
 	 * closed.
-	 * @param entityClass The type of the objects the Spanner results represent.
-	 * @param <T> The type of the objects the Spanner results represent.
-	 * @return A list of objects.
+	 * @param entityClass the type of the objects the Spanner results represent.
+	 * @param <T> the type of the objects the Spanner results represent.
+	 * @return a list of objects.
 	 */
 	<T> List<T> mapToList(ResultSet resultSet, Class<T> entityClass);
 
 	/**
 	 * Converts a set of Spanner {@link ResultSet} into a list of objects.
-	 * @param resultSet The Spanner results to convert. The ResultSet will be exhausted and
-	 * closed.
-	 * @param entityClass The type of the objects the Spanner results represent.
-	 * @param <T> The type of the objects the Spanner results represent.
-	 * @param includeColumns the Set of columns to read. If the Set is not present or this
-	 * param is null then all columns will be read.
-	 * @param allowMissingColumns if true, then properties with no corresponding column are
-	 * not mapped. If false, then an exception is thrown.
-	 * @return A list of objects.
+	 * @param resultSet the Spanner results to convert. The ResultSet will be exhausted
+	 * and closed.
+	 * @param entityClass the type of the objects the Spanner results represent.
+	 * @param <T> the type of the objects the Spanner results represent.
+	 * @param includeColumns the Set of columns to read. If this param is null then all
+	 * columns will be read.
+	 * @param allowMissingColumns if true, then properties with no corresponding column
+	 * are not mapped. If false, then an exception is thrown.
+	 * @return a list of objects.
 	 */
 	<T> List<T> mapToList(ResultSet resultSet, Class<T> entityClass,
-			Optional<Set<String>> includeColumns, boolean allowMissingColumns);
+			Set<String> includeColumns, boolean allowMissingColumns);
 
 	/**
 	 * Converts a set of Spanner {@link ResultSet} into a list of objects.
-	 * @param resultSet The Spanner results to convert. The ResultSet will be exhausted and
+	 * @param resultSet the Spanner results to convert. The ResultSet will be exhausted and
 	 * closed.
-	 * @param entityClass The type of the objects the Spanner results represent.
-	 * @param <T> The type of the objects the Spanner results represent.
+	 * @param entityClass the type of the objects the Spanner results represent.
+	 * @param <T> the type of the objects the Spanner results represent.
 	 * @param includeColumns the columns to read. If none are provided then all columns are
 	 * read.
-	 * @return A list of objects.
+	 * @return a list of objects.
 	 */
 	<T> List<T> mapToList(ResultSet resultSet, Class<T> entityClass,
 			String... includeColumns);
@@ -80,6 +79,17 @@ public interface SpannerEntityProcessor extends SpannerEntityReader, SpannerEnti
 	 * array elements.
 	 * @return the Java type that works directly with Spanner.
 	 */
-	Class getCorrespondingSpannerJavaType(Class originalType, boolean isIterableInnerType);
+	Class<?> getCorrespondingSpannerJavaType(Class originalType, boolean isIterableInnerType);
 
+	/**
+	 * Get the write converter used by this processor.
+	 * @return the write converter.
+	 */
+	SpannerWriteConverter getWriteConverter();
+
+	/**
+	 * Get the read converter used by this processor.
+	 * @return the read converter.
+	 */
+	SpannerReadConverter getReadConverter();
 }

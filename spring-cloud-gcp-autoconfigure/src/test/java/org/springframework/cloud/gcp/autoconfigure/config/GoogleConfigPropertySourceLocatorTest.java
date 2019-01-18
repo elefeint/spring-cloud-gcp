@@ -1,17 +1,17 @@
 /*
- *  Copyright 2017 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.autoconfigure.config;
@@ -30,7 +30,7 @@ import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.StandardEnvironment;
 
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -39,8 +39,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
+ * Tests for the config property source locator.
+ *
  * @author Jisha Abubaker
  * @author João André Martins
+ * @author Chengyuan Zhao
  */
 public class GoogleConfigPropertySourceLocatorTest {
 
@@ -79,10 +82,10 @@ public class GoogleConfigPropertySourceLocatorTest {
 				this.projectIdProvider, this.credentialsProvider, this.gcpConfigProperties));
 		doReturn(googleConfigEnvironment).when(this.googleConfigPropertySourceLocator).getRemoteEnvironment();
 		PropertySource<?> propertySource = this.googleConfigPropertySourceLocator.locate(new StandardEnvironment());
-		assertEquals(propertySource.getName(), "spring-cloud-gcp");
-		assertEquals(propertySource.getProperty("property-int"), 10);
-		assertEquals(propertySource.getProperty("property-bool"), true);
-		assertEquals("projectid", this.googleConfigPropertySourceLocator.getProjectId());
+		assertThat(propertySource.getName()).isEqualTo("spring-cloud-gcp");
+		assertThat(propertySource.getProperty("property-int")).isEqualTo(10);
+		assertThat(propertySource.getProperty("property-bool")).isEqualTo(true);
+		assertThat(this.googleConfigPropertySourceLocator.getProjectId()).isEqualTo("projectid");
 	}
 
 	@Test
@@ -94,8 +97,8 @@ public class GoogleConfigPropertySourceLocatorTest {
 				this.projectIdProvider, this.credentialsProvider, this.gcpConfigProperties));
 		doReturn(googleConfigEnvironment).when(this.googleConfigPropertySourceLocator).getRemoteEnvironment();
 		PropertySource<?> propertySource = this.googleConfigPropertySourceLocator.locate(new StandardEnvironment());
-		assertEquals(propertySource.getName(), "spring-cloud-gcp");
-		assertEquals(0, ((MapPropertySource) propertySource).getPropertyNames().length);
+		assertThat(propertySource.getName()).isEqualTo("spring-cloud-gcp");
+		assertThat(((MapPropertySource) propertySource).getPropertyNames()).isEmpty();
 	}
 
 	@Test
@@ -123,6 +126,6 @@ public class GoogleConfigPropertySourceLocatorTest {
 				this.projectIdProvider, this.credentialsProvider, this.gcpConfigProperties
 		);
 
-		assertEquals("pariah", this.googleConfigPropertySourceLocator.getProjectId());
+		assertThat(this.googleConfigPropertySourceLocator.getProjectId()).isEqualTo("pariah");
 	}
 }

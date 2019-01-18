@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.convert;
@@ -22,15 +22,21 @@ import com.google.cloud.ByteArray;
 import com.google.cloud.Timestamp;
 import com.google.cloud.spanner.Struct;
 import com.google.cloud.spanner.Type;
+import com.google.cloud.spanner.Type.Code;
 import com.google.common.collect.ImmutableMap;
 
 /**
+ * A utility class to map between common Java types and types to use with Spanner.
+ *
  * @author Chengyuan Zhao
  * @author Balint Pato
  *
  * @since 1.1
  */
-public class SpannerTypeMapper {
+public final class SpannerTypeMapper {
+
+	private SpannerTypeMapper() {
+	}
 
 	private static final Map<Class, Type.Code> JAVA_TYPE_TO_SPANNER_SIMPLE_COLUMN_TYPE_MAPPING;
 
@@ -70,7 +76,9 @@ public class SpannerTypeMapper {
 				.keySet()
 				.stream()
 				.forEach(
-						type -> builder.put(SPANNER_SIMPLE_COLUMN_CODES_TO_JAVA_TYPE_MAPPING.get(type), type));
+						(type) -> builder.put(SPANNER_SIMPLE_COLUMN_CODES_TO_JAVA_TYPE_MAPPING.get(type), type));
+		builder.put(double.class, Code.FLOAT64);
+		builder.put(long.class, Code.INT64);
 		JAVA_TYPE_TO_SPANNER_SIMPLE_COLUMN_TYPE_MAPPING = builder.build();
 	}
 
@@ -80,23 +88,23 @@ public class SpannerTypeMapper {
 				.keySet()
 				.stream()
 				.forEach(
-						type -> builder.put(SPANNER_ARRAY_COLUMN_CODES_TO_JAVA_TYPE_MAPPING.get(type), type));
+						(type) -> builder.put(SPANNER_ARRAY_COLUMN_CODES_TO_JAVA_TYPE_MAPPING.get(type), type));
 		JAVA_TYPE_TO_SPANNER_ARRAY_COLUMN_TYPE_MAPPING = builder.build();
 	}
 
-	public Class getSimpleJavaClassFor(Type.Code code) {
+	public static Class getSimpleJavaClassFor(Type.Code code) {
 		return SPANNER_SIMPLE_COLUMN_CODES_TO_JAVA_TYPE_MAPPING.get(code);
 	}
 
-	public Class getArrayJavaClassFor(Type.Code code) {
+	public static Class getArrayJavaClassFor(Type.Code code) {
 		return SPANNER_ARRAY_COLUMN_CODES_TO_JAVA_TYPE_MAPPING.get(code);
 	}
 
-	public Type.Code getSimpleTypeCodeForJavaType(Class spannerJavaType) {
+	public static Type.Code getSimpleTypeCodeForJavaType(Class spannerJavaType) {
 		return JAVA_TYPE_TO_SPANNER_SIMPLE_COLUMN_TYPE_MAPPING.get(spannerJavaType);
 	}
 
-	public Type.Code getArrayTypeCodeForJavaType(Class spannerJavaType) {
+	public static Type.Code getArrayTypeCodeForJavaType(Class spannerJavaType) {
 		return JAVA_TYPE_TO_SPANNER_ARRAY_COLUMN_TYPE_MAPPING.get(spannerJavaType);
 	}
 }

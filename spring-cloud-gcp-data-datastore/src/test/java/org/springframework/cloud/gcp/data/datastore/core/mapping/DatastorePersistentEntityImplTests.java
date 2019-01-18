@@ -1,22 +1,24 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.datastore.core.mapping;
 
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.annotation.Id;
@@ -26,25 +28,28 @@ import org.springframework.data.mapping.SimplePropertyHandler;
 import org.springframework.data.util.ClassTypeInformation;
 import org.springframework.expression.spel.SpelEvaluationException;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
+ * Tests for the Datastore Persistent Entity.
+ *
  * @author Chengyuan Zhao
  */
 public class DatastorePersistentEntityImplTests {
+
+	/**
+	 * used to check exception messages and types.
+	 */
+	@Rule
+	public ExpectedException expectedException = ExpectedException.none();
 
 	@Test
 	public void testTableName() {
 		DatastorePersistentEntityImpl<TestEntity> entity = new DatastorePersistentEntityImpl<>(
 				ClassTypeInformation.from(TestEntity.class));
-
-		assertThat(entity.kindName(), is("custom_test_kind"));
+		assertThat(entity.kindName()).isEqualTo("custom_test_kind");
 	}
 
 	@Test
@@ -52,7 +57,7 @@ public class DatastorePersistentEntityImplTests {
 		DatastorePersistentEntityImpl<EntityNoCustomName> entity = new DatastorePersistentEntityImpl<>(
 				ClassTypeInformation.from(EntityNoCustomName.class));
 
-		assertThat(entity.kindName(), is("entityNoCustomName"));
+		assertThat(entity.kindName()).isEqualTo("entityNoCustomName");
 	}
 
 	@Test
@@ -60,11 +65,13 @@ public class DatastorePersistentEntityImplTests {
 		DatastorePersistentEntityImpl<EntityEmptyCustomName> entity = new DatastorePersistentEntityImpl<>(
 				ClassTypeInformation.from(EntityEmptyCustomName.class));
 
-		assertThat(entity.kindName(), is("entityEmptyCustomName"));
+		assertThat(entity.kindName()).isEqualTo("entityEmptyCustomName");
 	}
 
-	@Test(expected = SpelEvaluationException.class)
+	@Test
 	public void testExpressionResolutionWithoutApplicationContext() {
+		this.expectedException.expect(SpelEvaluationException.class);
+		this.expectedException.expectMessage("Property or field 'kindPostfix' cannot be found on null");
 		DatastorePersistentEntityImpl<EntityWithExpression> entity = new DatastorePersistentEntityImpl<>(
 				ClassTypeInformation.from(EntityWithExpression.class));
 
@@ -81,23 +88,26 @@ public class DatastorePersistentEntityImplTests {
 		when(applicationContext.containsBean("kindPostfix")).thenReturn(true);
 
 		entity.setApplicationContext(applicationContext);
-		assertThat(entity.kindName(), is("kind_something"));
+		assertThat(entity.kindName()).isEqualTo("kind_something");
 	}
 
 	@Test
 	public void testHasIdProperty() {
-		assertTrue(new DatastoreMappingContext().getPersistentEntity(TestEntity.class)
-				.hasIdProperty());
+		assertThat(new DatastoreMappingContext().getPersistentEntity(TestEntity.class)
+				.hasIdProperty()).isTrue();
 	}
 
 	@Test
 	public void testHasNoIdProperty() {
-		assertFalse(new DatastoreMappingContext()
-				.getPersistentEntity(EntityWithNoId.class).hasIdProperty());
+		assertThat(new DatastoreMappingContext().getPersistentEntity(EntityWithNoId.class).hasIdProperty()).isFalse();
 	}
 
-	@Test(expected = DatastoreDataException.class)
+	@Test
 	public void testGetIdPropertyOrFail() {
+		this.expectedException.expect(DatastoreDataException.class);
+		this.expectedException.expectMessage("An ID property was required but does not exist for the type: " +
+				"class org.springframework.cloud.gcp.data.datastore.core.mapping." +
+				"DatastorePersistentEntityImplTests$EntityWithNoId");
 		new DatastoreMappingContext().getPersistentEntity(EntityWithNoId.class)
 				.getIdPropertyOrFail();
 	}
@@ -111,8 +121,9 @@ public class DatastorePersistentEntityImplTests {
 		DatastorePersistentEntity p = new DatastoreMappingContext()
 				.getPersistentEntity(TestEntity.class);
 		PersistentPropertyAccessor accessor = p.getPropertyAccessor(t);
-		p.doWithProperties((SimplePropertyHandler) property -> assertNotEquals("b",
-				accessor.getProperty(property)));
+
+		p.doWithProperties(
+				(SimplePropertyHandler) (property) -> assertThat(accessor.getProperty(property)).isNotEqualTo("b"));
 	}
 
 	@Entity(name = "custom_test_kind")

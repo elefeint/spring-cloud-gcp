@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core;
@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 import com.google.cloud.spanner.Key;
@@ -39,6 +38,8 @@ import org.springframework.data.mapping.PersistentPropertyAccessor;
 import org.springframework.util.Assert;
 
 /**
+ * Factory that generates mutations for writing to Spanner.
+ *
  * @author Chengyuan Zhao
  *
  * @since 1.1
@@ -52,11 +53,12 @@ public class SpannerMutationFactoryImpl implements SpannerMutationFactory {
 	private final SpannerSchemaUtils spannerSchemaUtils;
 
 	/**
-	 * Constructor
-	 * @param spannerEntityProcessor The object mapper used to convert between objects and Spanner
+	 * Constructor.
+	 * @param spannerEntityProcessor the object mapper used to convert between objects and Spanner
 	 * data types.
-	 * @param spannerMappingContext The mapping context used to get metadata from entity
+	 * @param spannerMappingContext the mapping context used to get metadata from entity
 	 * types.
+	 * @param spannerSchemaUtils the schema utility to use
 	 */
 	public SpannerMutationFactoryImpl(SpannerEntityProcessor spannerEntityProcessor,
 			SpannerMappingContext spannerMappingContext,
@@ -78,17 +80,13 @@ public class SpannerMutationFactoryImpl implements SpannerMutationFactory {
 	}
 
 	@Override
-	public List<Mutation> upsert(Object object, Optional<Set<String>> includeColumns) {
-		return saveObject(Op.INSERT_OR_UPDATE, object,
-				includeColumns == null || !includeColumns.isPresent() ? null
-						: includeColumns.get());
+	public List<Mutation> upsert(Object object, Set<String> includeProperties) {
+		return saveObject(Op.INSERT_OR_UPDATE, object, includeProperties);
 	}
 
 	@Override
-	public List<Mutation> update(Object object, Optional<Set<String>> includeColumns) {
-		return saveObject(Op.UPDATE, object,
-				includeColumns == null || !includeColumns.isPresent() ? null
-						: includeColumns.get());
+	public List<Mutation> update(Object object, Set<String> includeProperties) {
+		return saveObject(Op.UPDATE, object, includeProperties);
 	}
 
 	@Override
@@ -125,24 +123,30 @@ public class SpannerMutationFactoryImpl implements SpannerMutationFactory {
 		return delete(entityClass, KeySet.singleKey(key));
 	}
 
-	private List<Mutation> saveObject(Op op, Object object, Set<String> includeColumns) {
+	private List<Mutation> saveObject(Op op, Object object,
+			Set<String> includeProperties) {
 		SpannerPersistentEntity<?> persistentEntity = this.spannerMappingContext
 				.getPersistentEntity(object.getClass());
 		List<Mutation> mutations = new ArrayList<>();
 		Mutation.WriteBuilder writeBuilder = writeBuilder(op,
 				persistentEntity.tableName());
-		this.spannerEntityProcessor.write(object, writeBuilder::set, includeColumns);
+		this.spannerEntityProcessor.write(object, writeBuilder::set, includeProperties);
 		mutations.add(writeBuilder.build());
 
-		persistentEntity.doWithInterleavedProperties(spannerPersistentProperty -> {
-			Iterable kids = (Iterable) persistentEntity.getPropertyAccessor(object)
-					.getProperty(spannerPersistentProperty);
-			if (kids != null) {
-				for (Object child : kids) {
-					verifyChildHasParentId(persistentEntity, object,
-							this.spannerMappingContext.getPersistentEntity(
-									spannerPersistentProperty.getColumnInnerType()), child);
-					mutations.addAll(saveObject(op, child, includeColumns));
+		persistentEntity.doWithInterleavedProperties((spannerPersistentProperty) -> {
+			if (includeProperties == null
+					|| includeProperties.contains(spannerPersistentProperty.getName())) {
+
+				Iterable kids = (Iterable) persistentEntity.getPropertyAccessor(object)
+						.getProperty(spannerPersistentProperty);
+				if (kids != null) {
+					for (Object child : kids) {
+						verifyChildHasParentId(persistentEntity, object,
+								this.spannerMappingContext.getPersistentEntity(
+										spannerPersistentProperty.getColumnInnerType()),
+								child);
+						mutations.addAll(saveObject(op, child, includeProperties));
+					}
 				}
 			}
 		});

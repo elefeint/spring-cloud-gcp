@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.autoconfigure.datastore;
@@ -31,7 +31,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.cloud.gcp.autoconfigure.core.GcpContextAutoConfiguration;
 import org.springframework.cloud.gcp.core.DefaultCredentialsProvider;
 import org.springframework.cloud.gcp.core.GcpProjectIdProvider;
-import org.springframework.cloud.gcp.core.UsageTrackingHeaderProvider;
+import org.springframework.cloud.gcp.core.UserAgentHeaderProvider;
 import org.springframework.cloud.gcp.data.datastore.core.DatastoreOperations;
 import org.springframework.cloud.gcp.data.datastore.core.DatastoreTemplate;
 import org.springframework.cloud.gcp.data.datastore.core.convert.DatastoreCustomConversions;
@@ -71,7 +71,7 @@ public class GcpDatastoreAutoConfiguration {
 		this.credentials = (gcpDatastoreProperties.getCredentials().hasKey()
 				? new DefaultCredentialsProvider(gcpDatastoreProperties)
 				: credentialsProvider).getCredentials();
-		this.projectId = gcpDatastoreProperties.getProjectId() != null
+		this.projectId = (gcpDatastoreProperties.getProjectId() != null)
 				? gcpDatastoreProperties.getProjectId()
 				: projectIdProvider.getProjectId();
 		this.namespace = gcpDatastoreProperties.getNamespace();
@@ -82,7 +82,7 @@ public class GcpDatastoreAutoConfiguration {
 	public Datastore datastore() {
 		DatastoreOptions.Builder builder = DatastoreOptions.newBuilder()
 				.setProjectId(this.projectId)
-				.setHeaderProvider(new UsageTrackingHeaderProvider(this.getClass()))
+				.setHeaderProvider(new UserAgentHeaderProvider(this.getClass()))
 				.setCredentials(this.credentials);
 		if (this.namespace != null) {
 			builder.setNamespace(this.namespace);
@@ -98,8 +98,9 @@ public class GcpDatastoreAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean
-	public ReadWriteConversions datastoreReadWriteConversions(DatastoreCustomConversions customConversions) {
-		return new TwoStepsConversions(customConversions);
+	public ReadWriteConversions datastoreReadWriteConversions(DatastoreCustomConversions customConversions,
+			ObjectToKeyFactory objectToKeyFactory) {
+		return new TwoStepsConversions(customConversions, objectToKeyFactory);
 	}
 
 	@Bean
@@ -110,15 +111,15 @@ public class GcpDatastoreAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean
-	public DatastoreEntityConverter datastoreEntityConverter(DatastoreMappingContext datastoreMappingContext,
-			ReadWriteConversions conversions) {
-		return new DefaultDatastoreEntityConverter(datastoreMappingContext, conversions);
+	public ObjectToKeyFactory objectToKeyFactory(Datastore datastore) {
+		return new DatastoreServiceObjectToKeyFactory(datastore);
 	}
 
 	@Bean
 	@ConditionalOnMissingBean
-	public ObjectToKeyFactory objectToKeyFactory(Datastore datastore) {
-		return new DatastoreServiceObjectToKeyFactory(datastore);
+	public DatastoreEntityConverter datastoreEntityConverter(DatastoreMappingContext datastoreMappingContext,
+			ReadWriteConversions conversions) {
+		return new DefaultDatastoreEntityConverter(datastoreMappingContext, conversions);
 	}
 
 	@Bean

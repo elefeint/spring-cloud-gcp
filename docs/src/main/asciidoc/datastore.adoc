@@ -1,0 +1,1107 @@
+:spring-data-commons-ref: https://docs.spring.io/spring-data/data-commons/docs/current/reference/html
+
+== Spring Data Cloud Datastore
+
+http://projects.spring.io/spring-data/[Spring Data] is an abstraction for storing and retrieving POJOs in numerous storage technologies.
+Spring Cloud GCP adds Spring Data support for http://cloud.google.com/datastore/[Google Cloud Datastore].
+
+Maven coordinates for this module only, using https://github.com/spring-cloud/spring-cloud-gcp/blob/master/spring-cloud-gcp-dependencies/pom.xml[Spring Cloud GCP BOM]:
+
+[source,xml]
+----
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-gcp-data-datastore</artifactId>
+</dependency>
+----
+
+Gradle coordinates:
+
+[source]
+----
+dependencies {
+    compile group: 'org.springframework.cloud', name: 'spring-cloud-gcp-data-datastore'
+}
+----
+
+We provide a link:../spring-cloud-gcp-starters/spring-cloud-gcp-starter-data-datastore[Spring Boot Starter for Spring Data Datastore], with which you can use our recommended auto-configuration setup.
+To use the starter, see the coordinates below.
+
+
+Maven:
+
+[source,xml]
+----
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-gcp-starter-data-datastore</artifactId>
+</dependency>
+----
+
+Gradle:
+
+[source,subs="normal"]
+----
+dependencies {
+    compile group: 'org.springframework.cloud', name: 'spring-cloud-gcp-starter-data-datastore'
+}
+----
+
+This setup takes care of bringing in the latest compatible version of Cloud Java Cloud Datastore libraries as well.
+
+=== Configuration
+
+To setup Spring Data Cloud Datastore, you have to configure the following:
+
+* Setup the connection details to Google Cloud Datastore.
+
+==== Cloud Datastore settings
+
+You can the use link:../spring-cloud-gcp-starters/spring-cloud-gcp-starter-data-datastore[Spring Boot Starter for Spring Data Datastore] to autoconfigure Google Cloud Datastore in your Spring application.
+It contains all the necessary setup that makes it easy to authenticate with your Google Cloud project.
+The following configuration options are available:
+
+|===
+| Name | Description | Required | Default value
+| `spring.cloud.gcp.datastore.enabled` | Enables the Cloud Datastore client | No | `true`
+| `spring.cloud.gcp.datastore.project-id` | GCP project ID where the Google Cloud Datastore API is hosted, if different from the one in the <<spring-cloud-gcp-core,Spring Cloud GCP Core Module>>
+| No |
+| `spring.cloud.gcp.datastore.credentials.location` | OAuth2 credentials for authenticating with the
+Google Cloud Datastore API, if different from the ones in the
+<<spring-cloud-gcp-core,Spring Cloud GCP Core Module>> | No |
+| `spring.cloud.gcp.datastore.credentials.encoded-key` | Base64-encoded OAuth2 credentials for authenticating with the
+Google Cloud Datastore API, if different from the ones in the
+<<spring-cloud-gcp-core,Spring Cloud GCP Core Module>> | No |
+| `spring.cloud.gcp.datastore.credentials.scopes` |
+https://developers.google.com/identity/protocols/googlescopes[OAuth2 scope] for Spring Cloud GCP
+Cloud Datastore credentials | No | https://www.googleapis.com/auth/datastore
+| `spring.cloud.gcp.datastore.namespace` | The Cloud Datastore namespace to use | No | the Default namespace of Cloud Datastore in your GCP project
+|===
+
+==== Repository settings
+
+Spring Data Repositories can be configured via the `@EnableDatastoreRepositories` annotation on your main `@Configuration` class.
+With our Spring Boot Starter for Spring Data Cloud Datastore, `@EnableDatastoreRepositories` is automatically added.
+It is not required to add it to any other class, unless there is a need to override finer grain configuration parameters provided by https://github.com/spring-cloud/spring-cloud-gcp/blob/master/spring-cloud-gcp-data-datastore/src/main/java/org/springframework/cloud/gcp/data/datastore/repository/config/EnableDatastoreRepositories.java[`@EnableDatastoreRepositories`].
+
+==== Autoconfiguration
+
+Our Spring Boot autoconfiguration creates the following beans available in the Spring application context:
+
+- an instance of `DatastoreTemplate`
+- an instance of all user defined repositories extending `CrudRepository`, `PagingAndSortingRepository`, and `DatastoreRepository` (an extension of `PagingAndSortingRepository` with additional Cloud Datastore features) when repositories are enabled
+- an instance of `Datastore` from the Google Cloud Java Client for Datastore, for convenience and lower level API access
+
+
+=== Object Mapping
+
+Spring Data Cloud Datastore allows you to map domain POJOs to Cloud Datastore kinds and entities via annotations:
+
+[source,java]
+----
+@Entity(name = "traders")
+public class Trader {
+
+	@Id
+	@Field(name = "trader_id")
+	String traderId;
+
+	String firstName;
+
+	String lastName;
+
+	@Transient
+	Double temporaryNumber;
+}
+----
+
+Spring Data Cloud Datastore will ignore any property annotated with `@Transient`.
+These properties will not be written to or read from Cloud Datastore.
+
+==== Constructors
+
+Simple constructors are supported on POJOs.
+The constructor arguments can be a subset of the persistent properties.
+Every constructor argument needs to have the same name and type as a persistent property on the entity and the constructor should set the property from the given argument.
+Arguments that are not directly set to properties are not supported.
+
+[source,java]
+----
+@Entity(name = "traders")
+public class Trader {
+
+	@Id
+	@Field(name = "trader_id")
+	String traderId;
+
+	String firstName;
+
+	String lastName;
+
+	@Transient
+	Double temporaryNumber;
+
+	public Trader(String traderId, String firstName) {
+	    this.traderId = traderId;
+	    this.firstName = firstName;
+	}
+}
+----
+
+
+==== Kind
+
+The `@Entity` annotation can provide the name of the Cloud Datastore kind that stores instances of the annotated class, one per row.
+
+==== Keys
+
+`@Id` identifies the property corresponding to the ID value.
+
+You must annotate one of your POJO's fields as the ID value, because every entity in Cloud Datastore requires a single ID value:
+
+[source,java]
+----
+@Entity(name = "trades")
+public class Trade {
+	@Id
+	@Field(name = "trade_id")
+	String tradeId;
+
+	@Field(name = "trader_id")
+	String traderId;
+
+	String action;
+
+	Double price;
+
+	Double shares;
+
+	String symbol;
+}
+----
+
+
+Datastore has automatic ID allocation.
+If a POJO instance is written to Cloud Datastore with `null` as the ID value, then Spring Data Cloud Datastore will obtain a newly allocated ID value from Cloud Datastore and set that in the POJO for saving.
+Because primitive `long` ID properties cannot be `null` and default to `0`, keys will not be allocated.
+
+==== Fields
+
+All accessible properties on POJOs are automatically recognized as a Cloud Datastore field.
+Field naming is generated by the `PropertyNameFieldNamingStrategy` by default defined on the `DatastoreMappingContext` bean.
+The `@Field` annotation optionally provides a different field name than that of the property.
+
+
+==== Supported Types
+
+Spring Data Cloud Datastore supports the following types for regular fields and elements of collections:
+
+[options="header"]
+|===
+| Type| Stored as
+| `com.google.cloud.Timestamp`|com.google.cloud.datastore.TimestampValue
+| `com.google.cloud.datastore.Blob`|com.google.cloud.datastore.BlobValue
+| `com.google.cloud.datastore.LatLng`|com.google.cloud.datastore.LatLngValue
+| `java.lang.Boolean`, `boolean`|com.google.cloud.datastore.BooleanValue
+| `java.lang.Double`, `double`|com.google.cloud.datastore.DoubleValue
+| `java.lang.Long`, `long`|com.google.cloud.datastore.LongValue
+| `java.lang.Integer`, `int`|com.google.cloud.datastore.LongValue
+| `java.lang.String`|com.google.cloud.datastore.StringValue
+| `com.google.cloud.datastore.Entity`|com.google.cloud.datastore.EntityValue
+| `com.google.cloud.datastore.Key`|com.google.cloud.datastore.KeyValue
+| `byte[]`|com.google.cloud.datastore.BlobValue
+| Java `enum` values|com.google.cloud.datastore.StringValue
+|===
+
+In addition, all types that can be converted to the ones listed in the table by
+`org.springframework.core.convert.support.DefaultConversionService` are supported.
+
+==== Custom types
+
+Custom converters can be used extending the type support for user defined types.
+
+. Converters need to implement the `org.springframework.core.convert.converter.Converter` interface in both directions.
+
+. The user defined type needs to be mapped to one of the basic types supported by Cloud Datastore.
+
+. An instance of both Converters (read and write) needs to be passed to the `DatastoreCustomConversions` constructor, which then has to be made available as a `@Bean` for `DatastoreCustomConversions`.
+
+For example:
+
+We would like to have a field of type  `Album` on our `Singer` POJO and want it to be stored as a string property:
+[source, java]
+----
+@Entity
+public class Singer {
+
+	@Id
+	String singerId;
+
+	String name;
+
+	Album album;
+}
+----
+
+Where Album is a simple class:
+
+[source, java]
+----
+public class Album {
+	String albumName;
+
+	LocalDate date;
+}
+----
+
+We have to define the two converters:
+
+[source, java]
+----
+	//Converter to write custom Album type
+	static final Converter<Album, String> ALBUM_STRING_CONVERTER =
+			new Converter<Album, String>() {
+				@Override
+				public String convert(Album album) {
+					return album.getAlbumName() + " " + album.getDate().format(DateTimeFormatter.ISO_DATE);
+				}
+			};
+
+	//Converters to read custom Album type
+	static final Converter<String, Album> STRING_ALBUM_CONVERTER =
+			new Converter<String, Album>() {
+				@Override
+				public Album convert(String s) {
+					String[] parts = s.split(" ");
+					return new Album(parts[0], LocalDate.parse(parts[parts.length - 1], DateTimeFormatter.ISO_DATE));
+				}
+			};
+----
+
+That will be configured in our `@Configuration` file:
+
+[source, java]
+----
+@Configuration
+public class ConverterConfiguration {
+	@Bean
+	public DatastoreCustomConversions datastoreCustomConversions() {
+		return new DatastoreCustomConversions(
+				Arrays.asList(
+						ALBUM_STRING_CONVERTER,
+						STRING_ALBUM_CONVERTER));
+	}
+}
+----
+
+==== Collections and arrays
+
+Arrays and collections (types that implement `java.util.Collection`) of supported types are supported.
+They are stored as `com.google.cloud.datastore.ListValue`.
+Elements are converted to Cloud Datastore supported types individually. `byte[]` is an exception, it is converted to
+`com.google.cloud.datastore.Blob`.
+
+
+==== Custom Converter for collections
+Users can provide converters from  `List<?>` to the custom collection type.
+Only read converter is necessary, the Collection API is used on the write side to convert a collection to the internal list type.
+
+Collection converters need to implement the `org.springframework.core.convert.converter.Converter` interface.
+
+
+Example:
+
+Let's improve the Singer class from the previous example.
+Instead of a field of type `Album`, we would like to have a field of type `ImmutableSet<Album>`:
+
+[source, java]
+----
+@Entity
+public class Singer {
+
+	@Id
+	String singerId;
+
+	String name;
+
+	ImmutableSet<Album> albums;
+}
+----
+
+We have to define a read converter only:
+[source, java]
+----
+static final Converter<List<?>, ImmutableSet<?>> LIST_IMMUTABLE_SET_CONVERTER =
+			new Converter<List<?>, ImmutableSet<?>>() {
+				@Override
+				public ImmutableSet<?> convert(List<?> source) {
+					return ImmutableSet.copyOf(source);
+				}
+			};
+----
+
+And add it to the list of custom converters:
+[source, java]
+----
+@Configuration
+public class ConverterConfiguration {
+	@Bean
+	public DatastoreCustomConversions datastoreCustomConversions() {
+		return new DatastoreCustomConversions(
+				Arrays.asList(
+						LIST_IMMUTABLE_SET_CONVERTER,
+
+						ALBUM_STRING_CONVERTER,
+						STRING_ALBUM_CONVERTER));
+	}
+}
+----
+
+
+=== Relationships
+
+There are three ways to represent relationships between entities that are described in this section:
+
+* Embedded entities stored directly in the field of the containing entity
+* `@Descendant` annotated properties for one-to-many relationships
+* `@Reference` annotated properties for general relationships without hierarchy
+
+==== Embedded Entities
+
+Fields whose types are also annotated with `@Entity` are converted to `EntityValue` and stored inside the parent entity.
+
+Here is an example of Cloud Datastore entity containing an embedded entity in JSON:
+
+[source, json]
+----
+{
+  "name" : "Alexander",
+  "age" : 47,
+  "child" : {"name" : "Philip"  }
+}
+
+----
+
+This corresponds to a simple pair of Java entities:
+
+[source, java]
+----
+import org.springframework.cloud.gcp.data.datastore.core.mapping.Entity;
+import org.springframework.data.annotation.Id;
+
+@Entity("parents")
+public class Parent {
+  @Id
+  String name;
+
+  Child child;
+}
+
+@Entity
+public class Child {
+  String name;
+}
+----
+
+`Child` entities are not stored in their own kind.
+They are stored in their entirety in the `child` field of the `parents` kind.
+
+Multiple levels of embedded entities are supported.
+
+NOTE: Embedded entities don't need to have `@Id` field, it is only required for top level entities.
+
+Example:
+
+Entities can hold embedded entities that are their own type.
+We can store trees in Cloud Datastore using this feature:
+
+[source, java]
+----
+import org.springframework.cloud.gcp.data.datastore.core.mapping.Embedded;
+import org.springframework.cloud.gcp.data.datastore.core.mapping.Entity;
+import org.springframework.data.annotation.Id;
+
+@Entity
+public class EmbeddableTreeNode {
+  @Id
+  long value;
+
+  EmbeddableTreeNode left;
+
+  EmbeddableTreeNode right;
+
+  Map<String, Long> longValues;
+
+  Map<String, List<Timestamp>> listTimestamps;
+
+  public EmbeddableTreeNode(long value, EmbeddableTreeNode left, EmbeddableTreeNode right) {
+    this.value = value;
+    this.left = left;
+    this.right = right;
+  }
+}
+----
+
+===== Maps
+
+Maps will be stored as embedded entities where the key values become the field names in the embedded entity.
+The value types in these maps can be any regularly supported property type, and the key values will be converted to String using the configured converters.
+
+Also, a collection of entities can be embedded; it will be converted to `ListValue` on write.
+
+Example:
+
+Instead of a binary tree from the previous example, we would like to store a general tree
+(each node can have an arbitrary number of children) in Cloud Datastore.
+To do that, we need to create a field of type `List<EmbeddableTreeNode>`:
+
+[source, java]
+----
+import org.springframework.cloud.gcp.data.datastore.core.mapping.Embedded;
+import org.springframework.data.annotation.Id;
+
+public class EmbeddableTreeNode {
+  @Id
+  long value;
+
+  List<EmbeddableTreeNode> children;
+
+  Map<String, EmbeddableTreeNode> siblingNodes;
+
+  Map<String, Set<EmbeddableTreeNode>> subNodeGroups;
+
+  public EmbeddableTreeNode(List<EmbeddableTreeNode> children) {
+    this.children = children;
+  }
+}
+----
+
+Because Maps are stored as entities, they can further hold embedded entities:
+
+- Singular embedded objects in the value can be stored in the values of embedded Maps.
+- Collections of embedded objects in the value can also be stored as the values of embedded Maps.
+- Maps in the value are further stored as embedded entities with the same rules applied recursively for their values.
+
+
+==== Ancestor-Descendant Relationships
+
+Parent-child relationships are supported via the `@Descendants` annotation.
+
+Unlike embedded children, descendants are fully-formed entities residing in their own kinds.
+The parent entity does not have an extra field to hold the descendant entities.
+Instead, the relationship is captured in the descendants' keys, which refer to their parent entities:
+
+[source, java]
+----
+import org.springframework.cloud.gcp.data.datastore.core.mapping.Descendants;
+import org.springframework.cloud.gcp.data.datastore.core.mapping.Entity;
+import org.springframework.data.annotation.Id;
+
+@Entity("orders")
+public class ShoppingOrder {
+  @Id
+  long id;
+
+  @Descendants
+  List<Item> items;
+}
+
+@Entity("purchased_item")
+public class Item {
+  @Id
+  Key purchasedItemKey;
+
+  String name;
+
+  Timestamp timeAddedToOrder;
+}
+----
+
+For example, an instance of a GQL key-literal representation for `Item` would also contain the parent `ShoppingOrder` ID value:
+
+----
+Key(orders, '12345', purchased_item, 'eggs')
+----
+
+The GQL key-literal representation for the parent `ShoppingOrder` would be:
+
+----
+Key(orders, '12345')
+----
+
+The Cloud Datastore entities exist separately in their own kinds.
+
+
+The `ShoppingOrder`:
+
+----
+{
+  "id" : 12345
+}
+----
+
+
+The two items inside that order:
+
+----
+{
+  "purchasedItemKey" : Key(orders, '12345', purchased_item, 'eggs'),
+  "name" : "eggs",
+  "timeAddedToOrder" : "2014-09-27 12:30:00.45-8:00"
+}
+
+{
+  "purchasedItemKey" : Key(orders, '12345', purchased_item, 'sausage'),
+  "name" : "sausage",
+  "timeAddedToOrder" : "2014-09-28 11:30:00.45-9:00"
+}
+----
+
+The parent-child relationship structure of objects is stored in Cloud Datastore using Datastore's https://cloud.google.com/datastore/docs/concepts/entities#ancestor_paths[ancestor relationships].
+Because the relationships are defined by the Ancestor mechanism, there is no extra column needed in either the parent or child entity to store this relationship.
+The relationship link is part of the descendant entity's key value.
+These relationships can be many levels deep.
+
+Properties holding child entities must be collection-like, but they can be any of the supported inter-convertible collection-like types that are supported for regular properties such as `List`, arrays, `Set`, etc...
+Child items must have `Key` as their ID type because Cloud Datastore stores the ancestor relationship link inside the keys of the children.
+
+Reading or saving an entity automatically causes all subsequent levels of children under that entity to be read or saved, respectively.
+If a new child is created and added to a property annotated `@Descendants` and the key property is left null, then a new key will be allocated for that child.
+The ordering of the retrieved children may not be the same as the ordering in the original property that was saved.
+
+Child entities cannot be moved from the property of one parent to that of another unless the child's key property is set to `null` or a value that contains the new parent as an ancestor.
+Since Cloud Datastore entity keys can have multiple parents, it is possible that a child entity appears in the property of multiple parent entities.
+Because entity keys are immutable in Cloud Datastore, to change the key of a child you must delete the existing one and re-save it with the new key.
+
+
+==== Key Reference Relationships
+
+General relationships can be stored using the `@Reference` annotation.
+
+[source, java]
+----
+import org.springframework.cloud.gcp.data.datastore.core.mapping.Reference;
+import org.springframework.data.annotation.Id;
+
+@Entity
+public class ShoppingOrder {
+  @Id
+  long id;
+
+  @Reference
+  List<Item> items;
+
+  @Reference
+  Item specialSingleItem;
+}
+
+@Entity
+public class Item {
+  @Id
+  Key purchasedItemKey;
+
+  String name;
+
+  Timestamp timeAddedToOrder;
+}
+----
+
+`@Reference` relationships are between fully-formed entities residing in their own kinds.
+The relationship between `ShoppingOrder` and `Item` entities are stored as a Key field inside `ShoppingOrder`, which are resolved to the underlying Java entity type by Spring Data Cloud Datastore:
+
+----
+{
+  "id" : 12345,
+  "specialSingleItem" : Key(item, "milk"),
+  "items" : [ Key(item, "eggs"), Key(item, "sausage") ]
+}
+
+----
+
+Reference properties can either be singular or collection-like.
+These properties correspond to actual columns in the entity and Cloud Datastore Kind that hold the key values of the referenced entities.
+The referenced entities are full-fledged entities of other Kinds.
+
+Similar to the `@Descendants` relationships, reading or writing an entity will recursively read or write all of the referenced entities at all levels.
+If referenced entities have `null` ID values, then they will be saved as new entities and will have ID values allocated by Cloud Datastore.
+There are no requirements for relationships between the key of an entity and the keys that entity holds as references.
+The order of collection-like reference properties is not preserved when reading back from Cloud Datastore.
+
+
+=== Datastore Operations & Template
+
+`DatastoreOperations` and its implementation, `DatastoreTemplate`, provides the Template pattern familiar to Spring developers.
+
+Using the auto-configuration provided by Spring Boot Starter for Datastore, your Spring application context will contain a fully configured `DatastoreTemplate` object that you can autowire in your application:
+
+[source,java]
+----
+@SpringBootApplication
+public class DatastoreTemplateExample {
+
+	@Autowired
+	DatastoreTemplate datastoreTemplate;
+
+	public void doSomething() {
+		this.datastoreTemplate.deleteAll(Trader.class);
+		//...
+		Trader t = new Trader();
+		//...
+		this.datastoreTemplate.save(t);
+		//...
+		List<Trader> traders = datastoreTemplate.findAll(Trader.class);
+		//...
+	}
+}
+----
+
+The Template API provides convenience methods for:
+
+- Write operations (saving and deleting)
+- Read-write transactions
+
+==== GQL Query
+
+In addition to retrieving entities by their IDs, you can also submit queries.
+
+[source,java]
+----
+  <T> Iterable<T> query(Query<? extends BaseEntity> query, Class<T> entityClass);
+
+  <A, T> Iterable<T> query(Query<A> query, Function<A, T> entityFunc);
+
+  Iterable<Key> queryKeys(Query<Key> query);
+----
+
+These methods, respectively, allow querying for:
+* entities mapped by a given entity class using all the same mapping and converting features
+* arbitrary types produced by a given mapping function
+* only the Cloud Datastore keys of the entities found by the query
+
+==== Find by ID(s)
+
+Datstore reading a single entity or multiple entities in a kind.
+
+Using `DatastoreTemplate` you can execute reads, for example:
+
+[source,java]
+----
+Trader trader = this.datastoreTemplate.findById("trader1", Trader.class);
+
+List<Trader> traders = this.datastoreTemplate.findAllById(ImmutableList.of("trader1", "trader2"), Trader.class);
+
+List<Trader> allTraders = this.datastoreTemplate.findAll(Trader.class);
+----
+
+Cloud Datastore executes key-based reads with strong consistency, but queries with eventual consistency.
+In the example above the first two reads utilize keys, while the third is executed using a query based on the corresponding Kind of `Trader`.
+
+
+===== Indexes
+
+By default, all fields are indexed.
+To disable indexing on a particular field, `@Unindexed` annotation can be used.
+
+Example:
+[source, java]
+----
+import org.springframework.cloud.gcp.data.datastore.core.mapping.Unindexed;
+
+public class ExampleItem {
+	long indexedField;
+
+	@Unindexed
+	long unindexedField;
+}
+----
+
+When using queries directly or via Query Methods, Cloud Datastore requires https://cloud.google.com/datastore/docs/concepts/indexes[composite custom indexes] if the select statement is not `SELECT *` or if there is more than one filtering condition in the `WHERE` clause.
+
+
+===== Read with offsets, limits, and sorting
+
+`DatastoreRepository` and custom-defined entity repositories implement the Spring Data `PagingAndSortingRepository`, which supports offsets and limits using page numbers and page sizes.
+Paging and sorting options are also supported in `DatastoreTemplate` by supplying a `DatastoreQueryOptions` to `findAll`.
+
+===== Partial read
+
+This feature is not supported yet.
+
+==== Write / Update
+
+The write methods of `DatastoreOperations` accept a POJO and writes all of its properties to Datastore.
+The required Datastore kind and entity metadata is obtained from the given object's actual type.
+
+If a POJO was retrieved from Datastore and its ID value was changed and then written or updated, the operation will occur as if against a row with the new ID value.
+The entity with the original ID value will not be affected.
+
+[source, java]
+----
+Trader t = new Trader();
+this.datastoreTemplate.save(t);
+----
+
+The `save` method behaves as update-or-insert.
+
+===== Partial Update
+
+This feature is not supported yet.
+
+==== Transactions
+
+Read and write transactions are provided by `DatastoreOperations` via the `performTransaction` method:
+
+[source,java]
+----
+
+@Autowired
+DatastoreOperations myDatastoreOperations;
+
+public String doWorkInsideTransaction() {
+  return myDatastoreOperations.performTransaction(
+    transactionDatastoreOperations -> {
+      // Work with transactionDatastoreOperations here.
+      // It is also a DatastoreOperations object.
+
+      return "transaction completed";
+    }
+  );
+}
+----
+
+The `performTransaction` method accepts a `Function` that is provided an instance of a `DatastoreOperations` object.
+The final returned value and type of the function is determined by the user.
+You can use this object just as you would a regular `DatastoreOperations` with an exception:
+
+- It cannot perform sub-transactions.
+
+Because of Cloud Datastore's consistency guarantees, there are https://cloud.google.com/datastore/docs/concepts/transactions#what_can_be_done_in_a_transaction[limitations] to the operations and relationships among entities used inside transactions.
+
+===== Declarative Transactions with @Transactional Annotation
+
+This feature requires a bean of `DatastoreTransactionManager`, which is provided when using `spring-cloud-gcp-starter-data-datastore`.
+
+`DatastoreTemplate` and `DatastoreRepository` support running methods with the `@Transactional` https://docs.spring.io/spring/docs/current/spring-framework-reference/data-access.html#transaction-declarative[annotation] as transactions.
+If a method annotated with `@Transactional` calls another method also annotated, then both methods will work within the same transaction.
+`performTransaction` cannot be used in `@Transactional` annotated methods because Cloud Datastore does not support transactions within transactions.
+
+==== Read-Write Support for Maps
+
+You can work with Maps of type `Map<String, ?>` instead of with entity objects by directly reading and writing them to and from Cloud Datastore.
+
+NOTE: This is a different situation than using entity objects that contain Map properties.
+
+The map keys are used as field names for a Datastore entity and map values are converted to Datastore supported types.
+Only simple types are supported (i.e. collections are not supported).
+Converters for custom value types can be added (see <<Custom types>> section).
+
+Example:
+[source,java]
+----
+Map<String, Long> map = new HashMap<>();
+map.put("field1", 1L);
+map.put("field2", 2L);
+map.put("field3", 3L);
+
+keyForMap = datastoreTemplate.createKey("kindName", "id");
+
+//write a map
+datastoreTemplate.writeMap(keyForMap, map);
+
+//read a map
+Map<String, Long> loadedMap = datastoreTemplate.findByIdAsMap(keyForMap, Long.class);
+----
+
+=== Repositories
+
+{spring-data-commons-ref}/#repositories[Spring Data Repositories] are an abstraction that can reduce boilerplate code.
+
+For example:
+
+[source,java]
+----
+public interface TraderRepository extends DatastoreRepository<Trader, String> {
+}
+----
+
+Spring Data generates a working implementation of the specified interface, which can be autowired into an application.
+
+The `Trader` type parameter to `DatastoreRepository` refers to the underlying domain type.
+The second type parameter, `String` in this case, refers to the type of the key of the domain type.
+
+[source,java]
+----
+public class MyApplication {
+
+	@Autowired
+	TraderRepository traderRepository;
+
+	public void demo() {
+
+		this.traderRepository.deleteAll();
+		String traderId = "demo_trader";
+		Trader t = new Trader();
+		t.traderId = traderId;
+		this.tradeRepository.save(t);
+
+		Iterable<Trader> allTraders = this.traderRepository.findAll();
+
+		int count = this.traderRepository.count();
+	}
+}
+
+----
+
+Repositories allow you to define custom Query Methods (detailed in the following sections) for retrieving, counting, and deleting based on filtering and paging parameters.
+Filtering parameters can be of types supported by your configured custom converters.
+
+==== Query methods by convention
+
+[source, java]
+----
+public interface TradeRepository extends DatastoreRepository<Trade, String[]> {
+  List<Trader> findByAction(String action);
+
+  int countByAction(String action);
+
+  boolean existsByAction(String action);
+
+  List<Trade> findTop3ByActionAndSymbolAndPriceGreaterThanAndPriceLessThanOrEqualOrderBySymbolDesc(
+  			String action, String symbol, double priceFloor, double priceCeiling);
+
+  Page<TestEntity> findByAction(String action, Pageable pageable);
+
+  Slice<TestEntity> findBySymbol(String symbol, Pageable pageable);
+
+  List<TestEntity> findBySymbol(String symbol, Sort sort);
+}
+----
+
+In the example above the {spring-data-commons-ref}/#repositories.query-methods[query methods] in `TradeRepository` are generated based on the name of the methods using the{spring-data-commons-ref}#repositories.query-methods.query-creation[Spring Data Query creation naming convention].
+
+Cloud Datastore only supports filter components joined by AND, and the following operations:
+
+* `equals`
+* `greater than or equals`
+* `greater than`
+* `less than or equals`
+* `less than`
+* `is null`
+
+After writing a custom repository interface specifying just the signatures of these methods, implementations are generated for you and can be used with an auto-wired instance of the repository.
+Because of Cloud Datastore's requirement that explicitly selected fields must all appear in a composite index together, `find` name-based query methods are run as `SELECT *`.
+
+Delete queries are also supported.
+For example, query methods such as `deleteByAction` or `removeByAction` delete entities found by `findByAction`.
+Delete queries are executed as separate read and delete operations instead of as a single transaction because Cloud Datastore cannot query in transactions unless ancestors for queries are specified.
+As a result, `removeBy` and `deleteBy` name-convention query methods cannot be used inside transactions via either `performInTransaction` or `@Transactional` annotation.
+
+Delete queries can have the following return types:
+
+* An integer type that is the number of entities deleted
+* A collection of entities that were deleted
+* 'void'
+
+Methods can have `org.springframework.data.domain.Pageable` parameter to control pagination and sorting, or `org.springframework.data.domain.Sort` parameter to control sorting only.
+See https://docs.spring.io/spring-data/data-commons/docs/current/reference/html/#repositories.query-methods[Spring Data documentation] for details.
+
+For returning multiple items in a repository method, we support Java collections as well as `org.springframework.data.domain.Page` and `org.springframework.data.domain.Slice`.
+If a method's return type is `org.springframework.data.domain.Page`, the returned object will include current page, total number of results and total number of pages.
+
+NOTE: Methods that return `Page` execute an additional query to compute total number of pages.
+Methods that return `Slice`, on the other hand, don't execute any additional queries and therefore are much more efficient.
+
+==== Custom GQL query methods
+
+Custom GQL queries can be mapped to repository methods in one of two ways:
+
+ * `namedQueries` properties file
+ * using the `@Query` annotation
+
+===== Query methods with annotation
+
+Using the `@Query` annotation:
+
+The names of the tags of the GQL correspond to the `@Param` annotated names of the method parameters.
+
+[source, java]
+----
+public interface TraderRepository extends DatastoreRepository<Trader, String> {
+
+  @Query("SELECT * FROM traders WHERE name = @trader_name")
+  List<Trader> tradersByName(@Param("trader_name") String traderName);
+
+  @Query("SELECT * FROM  test_entities_ci WHERE id = @id_val")
+  TestEntity getOneTestEntity(@Param("id_val") long id);
+}
+----
+
+The following parameter types are supported:
+
+* `com.google.cloud.Timestamp`
+* `com.google.cloud.datastore.Blob`
+* `com.google.cloud.datastore.Key`
+* `com.google.cloud.datastore.Cursor`
+* `java.lang.Boolean`
+* `java.lang.Double`
+* `java.lang.Long`
+* `java.lang.String`
+* `enum` values.
+These are queried as `String` values.
+
+With the exception of `Cursor`, array forms of each of the types are also supported.
+
+If you would like to obtain the count of items of a query or if there are any items returned by the query, set the `count = true` or `exists = true` properties of the `@Query` annotation, respectively.
+The return type of the query method in these cases should be an integer type or a boolean type.
+
+Cloud Datastore provides provides the `SELECT __key__ FROM ...` special column for all kinds that retrieves the `Key`s of each row.
+Selecting this special `__key__` column is especially useful and efficient for `count` and `exists` queries.
+
+You can also query for non-entity types:
+
+[source, java]
+----
+	@Query(value = "SELECT __key__ from test_entities_ci")
+	List<Key> getKeys();
+
+	@Query(value = "SELECT __key__ from test_entities_ci limit 1")
+	Key getKey();
+
+	@Query("SELECT id FROM test_entities_ci WHERE id <= @id_val")
+	List<String> getIds(@Param("id_val") long id);
+
+	@Query("SELECT id FROM test_entities_ci WHERE id <= @id_val limit 1")
+	String getOneId(@Param("id_val") long id);
+----
+
+SpEL can be used to provide GQL parameters:
+
+[source, java]
+----
+@Query("SELECT * FROM |com.example.Trade| WHERE trades.action = @act
+  AND price > :#{#priceRadius * -1} AND price < :#{#priceRadius * 2}")
+List<Trade> fetchByActionNamedQuery(@Param("act") String action, @Param("priceRadius") Double r);
+----
+
+
+Kind names can be directly written in the GQL annotations.
+Kind names can also be resolved from the `@Entity` annotation on domain classes.
+
+In this case, the query should refer to table names with fully qualified class names surrounded by `|` characters: `|fully.qualified.ClassName|`.
+This is useful when SpEL expressions appear in the kind name provided to the `@Entity` annotation.
+For example:
+
+[source, java]
+----
+@Query("SELECT * FROM |com.example.Trade| WHERE trades.action = @act")
+List<Trade> fetchByActionNamedQuery(@Param("act") String action);
+----
+
+===== Query methods with named queries properties
+
+You can also specify queries with Cloud Datastore parameter tags and SpEL expressions in properties files.
+
+By default, the `namedQueriesLocation` attribute on `@EnableDatastoreRepositories` points to the `META-INF/datastore-named-queries.properties` file.
+You can specify the query for a method in the properties file by providing the GQL as the value for the "interface.method" property:
+
+[source, properties]
+----
+Trader.fetchByName=SELECT * FROM traders WHERE name = @tag0
+----
+
+[source, java]
+----
+public interface TraderRepository extends DatastoreRepository<Trader, String> {
+
+	// This method uses the query from the properties file instead of one generated based on name.
+	List<Trader> fetchByName(@Param("tag0") String traderName);
+
+}
+----
+
+==== Transactions
+
+These transactions work very similarly to those of `DatastoreOperations`, but is specific to the repository's domain type and provides repository functions instead of template functions.
+
+For example, this is a read-write transaction:
+
+[source,java]
+----
+
+@Autowired
+DatastoreRepository myRepo;
+
+public String doWorkInsideTransaction() {
+  return myRepo.performTransaction(
+    transactionDatastoreRepo -> {
+      // Work with the single-transaction transactionDatastoreRepo here.
+      // This is a DatastoreRepository object.
+
+      return "transaction completed";
+    }
+  );
+}
+----
+
+==== Projections
+
+Spring Data Cloud Datastore supports {spring-data-commons-ref}/#projections[projections].
+You can define projection interfaces based on domain types and add query methods that return them in your repository:
+
+[source, java]
+----
+public interface TradeProjection {
+
+	String getAction();
+
+	@Value("#{target.symbol + ' ' + target.action}")
+	String getSymbolAndAction();
+}
+
+public interface TradeRepository extends DatastoreRepository<Trade, Key> {
+
+	List<Trade> findByTraderId(String traderId);
+
+	List<TradeProjection> findByAction(String action);
+
+	@Query("SELECT action, symbol FROM trades WHERE action = @action")
+	List<TradeProjection> findByQuery(String action);
+}
+----
+
+Projections can be provided by name-convention-based query methods as well as by custom GQL queries.
+If using custom GQL queries, you can further restrict the fields retrieved from Cloud Datastore to just those required by the projection.
+However, custom select statements (those not using `SELECT *`) require composite indexes containing the selected fields.
+
+Properties of projection types defined using SpEL use the fixed name `target` for the underlying domain object.
+As a result, accessing underlying properties take the form `target.<property-name>`.
+
+==== REST Repositories
+
+When running with Spring Boot, repositories can be exposed as REST services by simply adding this dependency to your pom file:
+
+[source,xml]
+----
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-data-rest</artifactId>
+</dependency>
+----
+
+If you prefer to configure parameters (such as path), you can use `@RepositoryRestResource` annotation:
+[source,java]
+----
+@RepositoryRestResource(collectionResourceRel = "trades", path = "trades")
+public interface TradeRepository extends DatastoreRepository<Trade, String[]> {
+}
+----
+
+For example, you can retrieve all `Trade` objects in the repository by using `curl \http://<server>:<port>/trades`, or any specific trade via `curl \http://<server>:<port>/trades/<trader_id>`.
+
+You can also write trades using `curl -XPOST -H"Content-Type: application/json" -d@test.json \http://<server>:<port>/trades/` where the file `test.json` holds the JSON representation of a `Trade` object.
+
+To delete trades, you can use `curl -XDELETE \http://<server>:<port>/trades/<trader_id>`
+
+=== Sample
+
+A https://github.com/spring-cloud/spring-cloud-gcp/tree/master/spring-cloud-gcp-samples/spring-cloud-gcp-data-datastore-basic-sample[Simple Spring Boot Application] and more advanced https://github.com/spring-cloud/spring-cloud-gcp/tree/master/spring-cloud-gcp-samples/spring-cloud-gcp-data-datastore-sample[Sample Spring Boot Application] are provided to show how to use the Spring Data Cloud Datastore starter and template.

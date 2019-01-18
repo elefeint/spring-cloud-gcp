@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.datastore.core.convert;
@@ -23,7 +23,9 @@ import com.google.cloud.datastore.Entity;
 import com.google.cloud.datastore.LatLng;
 import com.google.cloud.datastore.testing.LocalDatastoreHelper;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 import org.springframework.cloud.gcp.data.datastore.core.mapping.DatastoreDataException;
 import org.springframework.cloud.gcp.data.datastore.core.mapping.DatastoreMappingContext;
@@ -31,14 +33,25 @@ import org.springframework.cloud.gcp.data.datastore.core.mapping.DatastorePersis
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests for the entity value provider.
+ *
+ * @author Dmitry Solomakha
+ * @author Chengyuan Zhao
+ */
 public class EntityPropertyValueProviderTests {
 
 	private static final LocalDatastoreHelper HELPER = LocalDatastoreHelper.create(1.0);
 
 	private Datastore datastore;
 
-	private TwoStepsConversions twoStepsConversion = new TwoStepsConversions(new DatastoreCustomConversions());
+	private TwoStepsConversions twoStepsConversion = new TwoStepsConversions(new DatastoreCustomConversions(), null);
 
+	/**
+	 * used to check exception messages and types.
+	 */
+	@Rule
+	public ExpectedException expectedException = ExpectedException.none();
 
 	private DatastorePersistentEntity<TestDatastoreItem> persistentEntity =
 			(DatastorePersistentEntity<TestDatastoreItem>)
@@ -81,8 +94,12 @@ public class EntityPropertyValueProviderTests {
 				.as("validate blob field").isEqualTo(Blob.copyFrom(bytes));
 	}
 
-	@Test(expected = DatastoreDataException.class)
+	@Test
 	public void testException() {
+		this.expectedException.expect(DatastoreDataException.class);
+		this.expectedException.expectMessage("Unable to read property boolField; nested exception is " +
+				"org.springframework.cloud.gcp.data.datastore.core.mapping.DatastoreDataException: " +
+				"Unable to convert class java.lang.Long to class java.lang.Boolean");
 		Entity entity = Entity.newBuilder(this.datastore.newKeyFactory().setKind("aKind").newKey("1"))
 				.set("boolField", 123L)
 				.build();

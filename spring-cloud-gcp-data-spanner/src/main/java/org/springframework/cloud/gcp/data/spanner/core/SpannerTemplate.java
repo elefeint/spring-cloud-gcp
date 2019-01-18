@@ -1,30 +1,32 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -42,10 +44,10 @@ import com.google.cloud.spanner.ReadOnlyTransaction;
 import com.google.cloud.spanner.ResultSet;
 import com.google.cloud.spanner.Statement;
 import com.google.cloud.spanner.Struct;
-import com.google.cloud.spanner.Struct.Builder;
 import com.google.cloud.spanner.TimestampBound;
 import com.google.cloud.spanner.TransactionContext;
 import com.google.cloud.spanner.TransactionRunner.TransactionCallable;
+import com.google.common.base.Stopwatch;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -57,11 +59,17 @@ import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerPersistent
 import org.springframework.cloud.gcp.data.spanner.repository.query.SpannerStatementQueryExecutor;
 import org.springframework.data.mapping.PersistentPropertyAccessor;
 import org.springframework.data.mapping.PropertyHandler;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
+import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.Assert;
 
 /**
- * @author Ray Tsang
+ * An implementation of {@link SpannerOperations}.
+ *
  * @author Chengyuan Zhao
+ * @author Ray Tsang
+ * @author Mike Eltsufin
  *
  * @since 1.1
  */
@@ -101,11 +109,12 @@ public class SpannerTemplate implements SpannerOperations {
 	}
 
 	protected ReadContext getReadContext() {
-		return this.databaseClient.singleUse();
+		return doWithOrWithoutTransactionContext((x) -> x, this.databaseClient::singleUse);
 	}
 
 	protected ReadContext getReadContext(Timestamp timestamp) {
-		return this.databaseClient.singleUse(TimestampBound.ofReadTimestamp(timestamp));
+		return doWithOrWithoutTransactionContext((x) -> x,
+				() -> this.databaseClient.singleUse(TimestampBound.ofReadTimestamp(timestamp)));
 	}
 
 	public SpannerMappingContext getMappingContext() {
@@ -114,6 +123,12 @@ public class SpannerTemplate implements SpannerOperations {
 
 	public SpannerEntityProcessor getSpannerEntityProcessor() {
 		return this.spannerEntityProcessor;
+	}
+
+	@Override
+	public long executeDmlStatement(Statement statement) {
+		return doWithOrWithoutTransactionContext((x) -> x.executeUpdate(statement),
+				() -> this.databaseClient.executePartitionedUpdate(statement));
 	}
 
 	@Override
@@ -138,30 +153,29 @@ public class SpannerTemplate implements SpannerOperations {
 		SpannerPersistentEntity<?> persistentEntity = this.mappingContext
 				.getPersistentEntity(entityClass);
 		return mapToListAndResolveChildren(executeRead(persistentEntity.tableName(), keys,
-				persistentEntity.columns(), options), entityClass);
+				persistentEntity.columns(), options), entityClass,
+				(options != null) ? options.getIncludeProperties() : null,
+				options != null && options.isAllowPartialRead());
 	}
 
 	@Override
-	public <T> List<T> query(Class<T> entityClass, String sql, List<String> tags,
-			Object[] params, SpannerQueryOptions options) {
-		String finalSql = sql;
-		boolean allowPartialRead = false;
-		if (options != null) {
-			allowPartialRead = options.isAllowPartialRead();
-			finalSql = applySortingPagingQueryOptions(entityClass, options, sql);
+	public <A> List<A> query(Function<Struct, A> rowFunc, Statement statement,
+			SpannerQueryOptions options) {
+		ArrayList<A> result = new ArrayList<>();
+		try (ResultSet resultSet = executeQuery(statement, options)) {
+			while (resultSet.next()) {
+				result.add(rowFunc.apply(resultSet.getCurrentRowAsStruct()));
+			}
 		}
-		return mapToListAndResolveChildren(executeQuery(SpannerStatementQueryExecutor
-				.buildStatementFromSqlWithArgs(finalSql, tags, param -> {
-					Builder builder = Struct.newBuilder();
-					this.spannerEntityProcessor.write(param, builder::set);
-					return builder.build();
-				}, params), options), entityClass, Optional.empty(), allowPartialRead);
+		return result;
 	}
 
 	@Override
-	public <T> List<T> query(Class<T> entityClass, Statement statement) {
-		return mapToListAndResolveChildren(executeQuery(statement, null), entityClass,
-				Optional.empty(), true);
+	public <T> List<T> query(Class<T> entityClass, Statement statement,
+			SpannerQueryOptions options) {
+		return mapToListAndResolveChildren(executeQuery(statement, options), entityClass,
+				(options != null) ? options.getIncludeProperties() : null,
+				options != null && options.isAllowPartialRead());
 	}
 
 	@Override
@@ -175,35 +189,18 @@ public class SpannerTemplate implements SpannerOperations {
 	}
 
 	@Override
-	public <T> List<T> queryAll(Class<T> entityClass, SpannerQueryOptions options) {
+	public <T> List<T> queryAll(Class<T> entityClass,
+			SpannerPageableQueryOptions options) {
 		SpannerPersistentEntity<?> persistentEntity = this.mappingContext
 				.getPersistentEntity(entityClass);
 		String sql = "SELECT " + SpannerStatementQueryExecutor.getColumnsStringForSelect(
 				persistentEntity) + " FROM " + persistentEntity.tableName();
-		return query(entityClass, sql, null, null, options);
-	}
-
-	public <T> String applySortingPagingQueryOptions(Class<T> entityClass,
-			SpannerQueryOptions options, String sql) {
-		SpannerPersistentEntity<?> persistentEntity = this.mappingContext
-				.getPersistentEntity(entityClass);
-		StringBuilder sb = SpannerStatementQueryExecutor.applySort(options.getSort(),
-				wrapAsSubSelect(sql), o -> {
-					SpannerPersistentProperty property = persistentEntity
-							.getPersistentProperty(o.getProperty());
-					return property == null ? o.getProperty() : property.getColumnName();
-				});
-		if (options.hasLimit()) {
-			sb.append(" LIMIT ").append(options.getLimit());
-		}
-		if (options.hasOffset()) {
-			sb.append(" OFFSET ").append(options.getOffset());
-		}
-		return sb.toString();
-	}
-
-	private StringBuilder wrapAsSubSelect(String sql) {
-		return new StringBuilder("SELECT * FROM (").append(sql).append(")");
+		return query(entityClass,
+				SpannerStatementQueryExecutor.buildStatementFromSqlWithArgs(
+						SpannerStatementQueryExecutor.applySortingPagingQueryOptions(
+								entityClass, options, sql, this.mappingContext),
+						null, null, null, null),
+				options);
 	}
 
 	@Override
@@ -226,20 +223,20 @@ public class SpannerTemplate implements SpannerOperations {
 	public void updateAll(Iterable objects) {
 		applyMutations(
 				getMutationsForMultipleObjects(objects,
-						x -> this.mutationFactory.update(x, null)));
+						(x) -> this.mutationFactory.update(x, null)));
 	}
 
 	@Override
-	public void update(Object object, String... includeColumns) {
+	public void update(Object object, String... includeProperties) {
 		applyMutations(
 				this.mutationFactory.update(object,
-				includeColumns.length == 0 ? null
-						: Optional.of(new HashSet<>(Arrays.asList(includeColumns)))));
+						(includeProperties.length == 0) ? null
+								: new HashSet<>(Arrays.asList(includeProperties))));
 	}
 
 	@Override
-	public void update(Object object, Optional<Set<String>> includeColumns) {
-		applyMutations(this.mutationFactory.update(object, includeColumns));
+	public void update(Object object, Set<String> includeProperties) {
+		applyMutations(this.mutationFactory.update(object, includeProperties));
 	}
 
 	@Override
@@ -251,20 +248,20 @@ public class SpannerTemplate implements SpannerOperations {
 	public void upsertAll(Iterable objects) {
 		applyMutations(
 				getMutationsForMultipleObjects(objects,
-						x -> this.mutationFactory.upsert(x, null)));
+						(x) -> this.mutationFactory.upsert(x, null)));
 	}
 
 	@Override
-	public void upsert(Object object, String... includeColumns) {
+	public void upsert(Object object, String... includeProperties) {
 		applyMutations(
 				this.mutationFactory.upsert(object,
-				includeColumns.length == 0 ? null
-						: Optional.of(new HashSet<>(Arrays.asList(includeColumns)))));
+						(includeProperties.length == 0) ? null
+								: new HashSet<>(Arrays.asList(includeProperties))));
 	}
 
 	@Override
-	public void upsert(Object object, Optional<Set<String>> includeColumns) {
-		applyMutations(this.mutationFactory.upsert(object, includeColumns));
+	public void upsert(Object object, Set<String> includeProperties) {
+		applyMutations(this.mutationFactory.upsert(object, includeProperties));
 	}
 
 	@Override
@@ -305,14 +302,17 @@ public class SpannerTemplate implements SpannerOperations {
 
 	@Override
 	public <T> T performReadWriteTransaction(Function<SpannerTemplate, T> operations) {
-		return this.databaseClient.readWriteTransaction()
+		return doWithOrWithoutTransactionContext((x) -> {
+			throw new IllegalStateException("There is already declarative transaction open. " +
+					"Spanner does not support nested transactions");
+		}, () -> this.databaseClient.readWriteTransaction()
 				.run(new TransactionCallable<T>() {
 					@Nullable
 					@Override
 					public T run(TransactionContext transaction) { // @formatter:off
-						ReadWriteTransactionSpannerTemplate transactionSpannerTemplate =
-										new ReadWriteTransactionSpannerTemplate(
-										// @formatter:on
+									ReadWriteTransactionSpannerTemplate transactionSpannerTemplate =
+											new ReadWriteTransactionSpannerTemplate(
+													// @formatter:on
 										SpannerTemplate.this.databaseClient,
 										SpannerTemplate.this.mappingContext,
 										SpannerTemplate.this.spannerEntityProcessor,
@@ -321,53 +321,80 @@ public class SpannerTemplate implements SpannerOperations {
 										transaction);
 						return operations.apply(transactionSpannerTemplate);
 					}
-				});
+				}));
 	}
 
 	@Override
 	public <T> T performReadOnlyTransaction(Function<SpannerTemplate, T> operations,
 			SpannerReadOptions readOptions) {
-		SpannerReadOptions options = readOptions == null ? new SpannerReadOptions()
-				: readOptions;
-		try (ReadOnlyTransaction readOnlyTransaction = options.hasTimestamp()
-				? this.databaseClient.readOnlyTransaction(
-						TimestampBound.ofReadTimestamp(options.getTimestamp()))
-				: this.databaseClient.readOnlyTransaction()) {
-			return operations.apply(new ReadOnlyTransactionSpannerTemplate(
-					SpannerTemplate.this.databaseClient,
-					SpannerTemplate.this.mappingContext,
-					SpannerTemplate.this.spannerEntityProcessor,
-					SpannerTemplate.this.mutationFactory,
-					SpannerTemplate.this.spannerSchemaUtils, readOnlyTransaction));
-		}
+		return doWithOrWithoutTransactionContext((x) -> {
+			throw new IllegalStateException("There is already declarative transaction open. " +
+					"Spanner does not support nested transactions");
+		}, () -> {
+
+			SpannerReadOptions options = (readOptions != null) ? readOptions : new SpannerReadOptions();
+			try (ReadOnlyTransaction readOnlyTransaction = (options.getTimestamp() != null)
+					? this.databaseClient.readOnlyTransaction(
+							TimestampBound.ofReadTimestamp(options.getTimestamp()))
+					: this.databaseClient.readOnlyTransaction()) {
+				return operations.apply(new ReadOnlyTransactionSpannerTemplate(
+						SpannerTemplate.this.databaseClient,
+						SpannerTemplate.this.mappingContext,
+						SpannerTemplate.this.spannerEntityProcessor,
+						SpannerTemplate.this.mutationFactory,
+						SpannerTemplate.this.spannerSchemaUtils, readOnlyTransaction));
+			}
+		});
 	}
 
 	public ResultSet executeQuery(Statement statement, SpannerQueryOptions options) {
-		ResultSet resultSet;
-		if (options == null) {
-			resultSet = getReadContext().executeQuery(statement);
+
+		Stopwatch stopwatch = null;
+		if (LOGGER.isDebugEnabled()) {
+			stopwatch = Stopwatch.createStarted();
 		}
-		else {
-			resultSet = (options.hasTimestamp() ? getReadContext(options.getTimestamp())
-					: getReadContext()).executeQuery(statement,
-							options.getQueryOptions());
-		}
+
+		ResultSet resultSet = performQuery(statement, options);
 		if (LOGGER.isDebugEnabled()) {
 			String message;
 			if (options == null) {
 				message = "Executing query without additional options: " + statement;
 			}
 			else {
-				StringBuilder logSb = new StringBuilder("Executing query").append(
-						options.hasTimestamp() ? " at timestamp" + options.getTimestamp()
-								: "");
-				for (QueryOption queryOption : options.getQueryOptions()) {
-					logSb.append(" with option: " + queryOption);
-				}
-				logSb.append(" : ").append(statement);
-				message = logSb.toString();
+				message = getQueryLogMessageWithOptions(statement, options);
 			}
 			LOGGER.debug(message);
+
+			if (stopwatch != null) {
+				stopwatch.stop();
+				LOGGER.debug("Query elapsed milliseconds: " + stopwatch.elapsed(TimeUnit.MILLISECONDS));
+			}
+		}
+		return resultSet;
+	}
+
+	private String getQueryLogMessageWithOptions(Statement statement, SpannerQueryOptions options) {
+		String message;
+		StringBuilder logSb = new StringBuilder("Executing query").append(
+				(options.getTimestamp() != null) ? " at timestamp" + options.getTimestamp()
+						: "");
+		for (QueryOption queryOption : options.getQueryOptions()) {
+			logSb.append(" with option: " + queryOption);
+		}
+		logSb.append(" : ").append(statement);
+		message = logSb.toString();
+		return message;
+	}
+
+	private ResultSet performQuery(Statement statement, SpannerQueryOptions options) {
+		ResultSet resultSet;
+		if (options == null) {
+			resultSet = getReadContext().executeQuery(statement);
+		}
+		else {
+			resultSet = ((options.getTimestamp() != null) ? getReadContext(options.getTimestamp())
+					: getReadContext()).executeQuery(statement,
+							options.getQueryOptions());
 		}
 		return resultSet;
 	}
@@ -375,39 +402,53 @@ public class SpannerTemplate implements SpannerOperations {
 	private ResultSet executeRead(String tableName, KeySet keys, Iterable<String> columns,
 			SpannerReadOptions options) {
 
+		Stopwatch stopwatch = null;
+		if (LOGGER.isDebugEnabled()) {
+			stopwatch = Stopwatch.createStarted();
+		}
+
+		ResultSet resultSet;
+
+		ReadContext readContext = (options != null && options.getTimestamp() != null)
+				? getReadContext(options.getTimestamp())
+				: getReadContext();
+
+		if (options == null) {
+			resultSet = getReadContext().read(tableName, keys, columns);
+		}
+		else if (options.getIndex() != null) {
+			resultSet = readContext.readUsingIndex(tableName, options.getIndex(), keys,
+					columns, options.getReadOptions());
+		}
+		else {
+			resultSet = readContext.read(tableName, keys, columns, options.getReadOptions());
+		}
+
 		if (LOGGER.isDebugEnabled()) {
 			StringBuilder logs = logColumns(tableName, keys, columns);
 			logReadOptions(options, logs);
 			LOGGER.debug(logs.toString());
+
+			if (stopwatch != null) {
+				stopwatch.stop();
+				LOGGER.debug("Read elapsed milliseconds: " + stopwatch.elapsed(TimeUnit.MILLISECONDS));
+			}
 		}
 
-		if (options == null) {
-			return getReadContext().read(tableName, keys, columns);
-		}
-
-		ReadContext readContext = options.hasTimestamp()
-				? getReadContext(options.getTimestamp())
-				: getReadContext();
-
-		if (options.hasIndex()) {
-			return readContext.readUsingIndex(tableName, options.getIndex(), keys,
-					columns, options.getReadOptions());
-		}
-
-		return readContext.read(tableName, keys, columns, options.getReadOptions());
+		return resultSet;
 	}
 
 	private void logReadOptions(SpannerReadOptions options, StringBuilder logs) {
 		if (options == null) {
 			return;
 		}
-		if (options.hasTimestamp()) {
+		if (options.getTimestamp() != null) {
 			logs.append(" at timestamp " + options.getTimestamp());
 		}
 		for (ReadOption readOption : options.getReadOptions()) {
 			logs.append(" with option: " + readOption);
 		}
-		if (options.hasIndex()) {
+		if (options.getIndex() != null) {
 			logs.append(" secondary index: " + options.getIndex());
 		}
 	}
@@ -417,43 +458,48 @@ public class SpannerTemplate implements SpannerOperations {
 		StringBuilder logSb = new StringBuilder("Executing read on table " + tableName
 				+ " with keys: " + keys + " and columns: ");
 		StringJoiner sj = new StringJoiner(",");
-		columns.forEach(col -> sj.add(col));
+		columns.forEach((col) -> sj.add(col));
 		logSb.append(sj.toString());
 		return logSb;
 	}
 
 	protected void applyMutations(Collection<Mutation> mutations) {
 		LOGGER.debug("Applying Mutation: " + mutations);
-		this.databaseClient.write(mutations);
+		doWithOrWithoutTransactionContext((x) -> {
+			x.buffer(mutations);
+			return null;
+		}, () -> {
+			this.databaseClient.write(mutations);
+			return null;
+		});
 	}
 
 	private <T> List<T> mapToListAndResolveChildren(ResultSet resultSet,
-			Class<T> entityClass, Optional<Set<String>> includeColumns,
+			Class<T> entityClass, Set<String> includeProperties,
 			boolean allowMissingColumns) {
 		return resolveChildEntities(this.spannerEntityProcessor.mapToList(resultSet,
-				entityClass, includeColumns, allowMissingColumns));
+				entityClass, includeProperties, allowMissingColumns), includeProperties);
 	}
 
-	private <T> List<T> mapToListAndResolveChildren(ResultSet resultSet,
-			Class<T> entityClass) {
-		return resolveChildEntities(
-				this.spannerEntityProcessor.mapToList(resultSet, entityClass));
-	}
-
-	private <T> List<T> resolveChildEntities(List<T> entities) {
+	private <T> List<T> resolveChildEntities(List<T> entities,
+			Set<String> includeProperties) {
 		for (Object entity : entities) {
-			resolveChildEntity(entity);
+			resolveChildEntity(entity, includeProperties);
 		}
 		return entities;
 	}
 
-	private void resolveChildEntity(Object entity) {
+	private void resolveChildEntity(Object entity, Set<String> includeProperties) {
 		SpannerPersistentEntity spannerPersistentEntity = this.mappingContext
 				.getPersistentEntity(entity.getClass());
 		PersistentPropertyAccessor accessor = spannerPersistentEntity
 				.getPropertyAccessor(entity);
 		spannerPersistentEntity.doWithInterleavedProperties(
-				(PropertyHandler<SpannerPersistentProperty>) spannerPersistentProperty -> {
+				(PropertyHandler<SpannerPersistentProperty>) (spannerPersistentProperty) -> {
+					if (includeProperties != null && !includeProperties
+							.contains(spannerPersistentEntity.getName())) {
+						return;
+					}
 					Class childType = spannerPersistentProperty.getColumnInnerType();
 					SpannerPersistentEntity childPersistentEntity = this.mappingContext
 							.getPersistentEntity(childType);
@@ -461,14 +507,28 @@ public class SpannerTemplate implements SpannerOperations {
 							query(childType,
 									SpannerStatementQueryExecutor.getChildrenRowsQuery(
 											this.spannerSchemaUtils.getKey(entity),
-											childPersistentEntity)));
+											childPersistentEntity),
+									null));
 				});
 	}
 
 	private Collection<Mutation> getMutationsForMultipleObjects(Iterable it,
 			Function<Object, Collection<Mutation>> individualEntityMutationFunc) {
 		return (Collection<Mutation>) StreamSupport.stream(it.spliterator(), false)
-				.flatMap(x -> individualEntityMutationFunc.apply(x).stream())
+				.flatMap((x) -> individualEntityMutationFunc.apply(x).stream())
 				.collect(Collectors.toList());
+	}
+
+	private TransactionContext getTransactionContext() {
+		return TransactionSynchronizationManager.isActualTransactionActive()
+				? ((SpannerTransactionManager.Tx) ((DefaultTransactionStatus) TransactionAspectSupport
+						.currentTransactionStatus()).getTransaction()).getTransactionContext()
+				: null;
+	}
+
+	private <A> A doWithOrWithoutTransactionContext(Function<TransactionContext, A> funcWithTransactionContext,
+			Supplier<A> funcWithoutTransactionContext) {
+		TransactionContext txContext = getTransactionContext();
+		return (txContext != null) ? funcWithTransactionContext.apply(txContext) : funcWithoutTransactionContext.get();
 	}
 }

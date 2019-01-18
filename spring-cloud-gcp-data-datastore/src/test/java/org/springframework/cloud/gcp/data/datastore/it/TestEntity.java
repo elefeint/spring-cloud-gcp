@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.datastore.it;
@@ -22,32 +22,45 @@ import org.springframework.cloud.gcp.data.datastore.core.mapping.Entity;
 import org.springframework.data.annotation.Id;
 
 /**
+ * A test entity for Datastore integration tests.
+ *
  * @author Chengyuan Zhao
  */
-@Entity(name = "test_entities_ci")
+@Entity(name = "test_entities_#{\"ci\"}")
 public class TestEntity {
 
 	@Id
-	private String id;
+	private Long id;
 
 	private String color;
 
-	private String shape;
+	private Long size;
 
-	public TestEntity(String id, String color, String shape, Blob blobField) {
+	private Shape shape;
+
+	private Blob blobField;
+
+	public TestEntity(Long id, String color, Long size, Shape shape, Blob blobField) {
 		this.id = id;
 		this.color = color;
+		this.size = size;
 		this.shape = shape;
 		this.blobField = blobField;
 	}
 
-	private Blob blobField;
+	public Shape getShape() {
+		return this.shape;
+	}
 
-	public String getId() {
+	public void setShape(Shape shape) {
+		this.shape = shape;
+	}
+
+	public Long getId() {
 		return this.id;
 	}
 
-	public void setId(String id) {
+	public void setId(Long id) {
 		this.id = id;
 	}
 
@@ -67,11 +80,18 @@ public class TestEntity {
 		this.color = color;
 	}
 
-	public String getShape() {
-		return this.shape;
+	public Long getSize() {
+		return this.size;
 	}
 
-	public void setShape(String shape) {
-		this.shape = shape;
+	public void setSize(Long size) {
+		this.size = size;
+	}
+
+	/**
+	 * An enum that tests conversion and storage.
+	 */
+	enum Shape {
+		CIRCLE, SQUARE;
 	}
 }

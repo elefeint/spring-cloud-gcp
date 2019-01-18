@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.mapping;
@@ -27,6 +27,8 @@ import java.util.regex.Pattern;
 
 import org.springframework.beans.BeansException;
 import org.springframework.cloud.gcp.data.spanner.core.convert.ConversionUtils;
+import org.springframework.cloud.gcp.data.spanner.core.convert.ConverterAwareMappingSpannerEntityProcessor;
+import org.springframework.cloud.gcp.data.spanner.core.convert.SpannerEntityWriter;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.expression.BeanFactoryAccessor;
 import org.springframework.context.expression.BeanFactoryResolver;
@@ -49,6 +51,7 @@ import org.springframework.util.StringUtils;
  * Represents a Cloud Spanner table and its columns' mapping to fields within an entity
  * type.
  *
+ * @param <T> the type of the persistent entity
  * @author Ray Tsang
  * @author Chengyuan Zhao
  *
@@ -75,6 +78,8 @@ public class SpannerPersistentEntityImpl<T>
 
 	private final SpannerMappingContext spannerMappingContext;
 
+	private final SpannerEntityWriter spannerEntityWriter;
+
 	private StandardEvaluationContext context;
 
 	private SpannerCompositeKeyProperty idProperty;
@@ -82,26 +87,33 @@ public class SpannerPersistentEntityImpl<T>
 	private String tableName;
 
 	/**
-	 * Creates a {@link SpannerPersistentEntityImpl}
+	 * Creates a {@link SpannerPersistentEntityImpl}.
 	 * @param information type information about the underlying entity type.
 	 */
 	public SpannerPersistentEntityImpl(TypeInformation<T> information) {
-		this(information, new SpannerMappingContext());
+		this(information, new SpannerMappingContext(),
+				new ConverterAwareMappingSpannerEntityProcessor(new SpannerMappingContext()));
 	}
 
 	/**
-	 * Creates a {@link SpannerPersistentEntityImpl}
+	 * Creates a {@link SpannerPersistentEntityImpl}.
 	 * @param information type information about the underlying entity type.
-	 * @param spannerMappingContext a mapping context that can be used to create
-	 * persistent entities from properties of this entity
+	 * @param spannerMappingContext a mapping context that can be used to create persistent
+	 *     entities from properties of this entity
+	 * @param spannerEntityWriter an entity writer used to create keys by converting and
+	 *     combining id properties.
 	 */
 	public SpannerPersistentEntityImpl(TypeInformation<T> information,
-			SpannerMappingContext spannerMappingContext) {
+			SpannerMappingContext spannerMappingContext, SpannerEntityWriter spannerEntityWriter) {
 		super(information);
 
 		Assert.notNull(spannerMappingContext,
-				"A valid SpannerMappingContext is required.");
+				"A non-null SpannerMappingContext is required.");
+		Assert.notNull(spannerEntityWriter, "A non-null SpannerEntityWriter is required.");
+
 		this.spannerMappingContext = spannerMappingContext;
+
+		this.spannerEntityWriter = spannerEntityWriter;
 
 		this.rawType = information.getType();
 
@@ -124,7 +136,7 @@ public class SpannerPersistentEntityImpl<T>
 		Expression expression = PARSER.parseExpression(this.table.name(),
 				ParserContext.TEMPLATE_EXPRESSION);
 
-		return expression instanceof LiteralExpression ? null : expression;
+		return (expression instanceof LiteralExpression) ? null : expression;
 	}
 
 	@Override
@@ -170,7 +182,7 @@ public class SpannerPersistentEntityImpl<T>
 	public void doWithInterleavedProperties(
 			PropertyHandler<SpannerPersistentProperty> handler) {
 		doWithProperties(
-				(PropertyHandler<SpannerPersistentProperty>) spannerPersistentProperty -> {
+				(PropertyHandler<SpannerPersistentProperty>) (spannerPersistentProperty) -> {
 					if (spannerPersistentProperty.isInterleaved()) {
 						handler.doWithPersistentProperty(spannerPersistentProperty);
 					}
@@ -181,7 +193,7 @@ public class SpannerPersistentEntityImpl<T>
 	public void doWithColumnBackedProperties(
 			PropertyHandler<SpannerPersistentProperty> handler) {
 		doWithProperties(
-				(PropertyHandler<SpannerPersistentProperty>) spannerPersistentProperty -> {
+				(PropertyHandler<SpannerPersistentProperty>) (spannerPersistentProperty) -> {
 					if (!spannerPersistentProperty.isInterleaved()) {
 						handler.doWithPersistentProperty(spannerPersistentProperty);
 					}
@@ -202,7 +214,7 @@ public class SpannerPersistentEntityImpl<T>
 	}
 
 	private void verifyInterleavedProperties() {
-		doWithInterleavedProperties(spannerPersistentProperty -> {
+		doWithInterleavedProperties((spannerPersistentProperty) -> {
 			// getting the inner type will throw an exception if the property isn't a
 			// collection.
 			Class childType = spannerPersistentProperty.getColumnInnerType();
@@ -239,7 +251,7 @@ public class SpannerPersistentEntityImpl<T>
 	private void verifyEmbeddedColumnNameOverlap(Set<String> seen,
 			SpannerPersistentEntity spannerPersistentEntity) {
 		spannerPersistentEntity.doWithColumnBackedProperties(
-				(PropertyHandler<SpannerPersistentProperty>) spannerPersistentProperty -> {
+				(PropertyHandler<SpannerPersistentProperty>) (spannerPersistentProperty) -> {
 					if (spannerPersistentProperty.isEmbedded()) {
 						if (ConversionUtils.isIterableNonByteArrayType(
 								spannerPersistentProperty.getType())) {
@@ -309,19 +321,24 @@ public class SpannerPersistentEntityImpl<T>
 	}
 
 	@Override
+	public SpannerEntityWriter getSpannerEntityWriter() {
+		return this.spannerEntityWriter;
+	}
+
+	@Override
 	public String tableName() {
 		if (this.tableName == null) {
 			if (this.hasAnnotatedTableName()) {
 				try {
 					this.tableName = validateTableName(
-							this.tableNameExpression == null ? this.table.name()
-									: this.tableNameExpression.getValue(this.context,
-											String.class));
+							(this.tableNameExpression != null)
+									? this.tableNameExpression.getValue(this.context, String.class)
+									: this.table.name());
 				}
-				catch (RuntimeException e) {
+				catch (RuntimeException ex) {
 					throw new SpannerDataException(
 							"Error getting table name for " + getType().getSimpleName(),
-							e);
+							ex);
 				}
 			}
 			else {

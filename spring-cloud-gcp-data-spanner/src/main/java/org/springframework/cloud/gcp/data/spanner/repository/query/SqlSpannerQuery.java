@@ -1,34 +1,41 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.repository.query;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.springframework.cloud.gcp.data.spanner.core.SpannerOperations;
-import org.springframework.cloud.gcp.data.spanner.core.SpannerQueryOptions;
+import com.google.cloud.spanner.Statement;
+import com.google.cloud.spanner.Struct;
+import com.google.cloud.spanner.Struct.Builder;
+
+import org.springframework.cloud.gcp.data.spanner.core.SpannerPageableQueryOptions;
+import org.springframework.cloud.gcp.data.spanner.core.SpannerTemplate;
+import org.springframework.cloud.gcp.data.spanner.core.convert.StructAccessor;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerDataException;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerMappingContext;
 import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerPersistentEntity;
@@ -36,7 +43,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.repository.query.Parameter;
 import org.springframework.data.repository.query.Parameters;
-import org.springframework.data.repository.query.QueryMethod;
 import org.springframework.data.repository.query.QueryMethodEvaluationContextProvider;
 import org.springframework.expression.EvaluationContext;
 import org.springframework.expression.Expression;
@@ -48,6 +54,9 @@ import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.util.StringUtils;
 
 /**
+ * A Query Method for Spanner using SQL strings.
+ *
+ * @param <T> the return type of the Query Method
  * @author Balint Pato
  * @author Chengyuan Zhao
  *
@@ -60,19 +69,28 @@ public class SqlSpannerQuery<T> extends AbstractSpannerQuery<T> {
 
 	private final String sql;
 
+	private final boolean isDml;
+
+	private final Function<Object, Struct> paramStructConvertFunc = (param) -> {
+		Builder builder = Struct.newBuilder();
+		this.spannerTemplate.getSpannerEntityProcessor().write(param, builder::set);
+		return builder.build();
+	};
+
 	private QueryMethodEvaluationContextProvider evaluationContextProvider;
 
 	private SpelExpressionParser expressionParser;
 
-	SqlSpannerQuery(Class<T> type, QueryMethod queryMethod,
-			SpannerOperations spannerOperations, String sql,
+	SqlSpannerQuery(Class<T> type, SpannerQueryMethod queryMethod,
+			SpannerTemplate spannerTemplate, String sql,
 			QueryMethodEvaluationContextProvider evaluationContextProvider,
 			SpelExpressionParser expressionParser,
-			SpannerMappingContext spannerMappingContext) {
-		super(type, queryMethod, spannerOperations, spannerMappingContext);
+			SpannerMappingContext spannerMappingContext, boolean isDml) {
+		super(type, queryMethod, spannerTemplate, spannerMappingContext);
 		this.evaluationContextProvider = evaluationContextProvider;
 		this.expressionParser = expressionParser;
 		this.sql = StringUtils.trimTrailingCharacter(sql.trim(), ';');
+		this.isDml = isDml;
 	}
 
 	private boolean isPageableOrSort(Class type) {
@@ -124,7 +142,7 @@ public class SqlSpannerQuery<T> extends AbstractSpannerQuery<T> {
 				}
 				result = result.replace(matched, spannerPersistentEntity.tableName());
 			}
-			catch (ClassNotFoundException e) {
+			catch (ClassNotFoundException ex) {
 				throw new SpannerDataException(
 						"The class name does not refer to an available entity type: "
 								+ className);
@@ -173,7 +191,7 @@ public class SqlSpannerQuery<T> extends AbstractSpannerQuery<T> {
 	}
 
 	@Override
-	public List<T> executeRawResult(Object[] parameters) {
+	public List executeRawResult(Object[] parameters) {
 		List<Object> params = new ArrayList<>();
 
 		Pageable pageable = null;
@@ -198,7 +216,20 @@ public class SqlSpannerQuery<T> extends AbstractSpannerQuery<T> {
 			}
 		}
 
-		SpannerQueryOptions spannerQueryOptions = new SpannerQueryOptions()
+		QueryTagValue queryTagValue = new QueryTagValue(getParamTags(), parameters,
+				params.toArray(),
+				resolveEntityClassNames(this.sql));
+
+		resolveSpELTags(queryTagValue);
+
+		return this.isDml
+				? Collections.singletonList(
+						this.spannerTemplate.executeDmlStatement(buildStatementFromQueryAndTags(queryTagValue)))
+				: executeReadSql(pageable, sort, queryTagValue);
+	}
+
+	private List executeReadSql(Pageable pageable, Sort sort, QueryTagValue queryTagValue) {
+		SpannerPageableQueryOptions spannerQueryOptions = new SpannerPageableQueryOptions()
 				.setAllowPartialRead(true);
 
 		if (pageable == null) {
@@ -211,17 +242,29 @@ public class SqlSpannerQuery<T> extends AbstractSpannerQuery<T> {
 					.setOffset(pageable.getOffset()).setLimit(pageable.getPageSize());
 		}
 
+		queryTagValue.sql = SpannerStatementQueryExecutor
+				.applySortingPagingQueryOptions(this.entityType, spannerQueryOptions,
+						resolveEntityClassNames(queryTagValue.sql),
+						this.spannerMappingContext);
 
-		QueryTagValue queryTagValue = new QueryTagValue(getParamTags(), parameters,
-				params.toArray(),
-				resolveEntityClassNames(this.sql));
+		Class simpleItemType = getReturnedSimpleConvertableItemType();
 
-		resolveSpELTags(queryTagValue);
+		Statement statement = buildStatementFromQueryAndTags(queryTagValue);
 
-		return this.spannerOperations.query(this.entityType,
-				resolveEntityClassNames(queryTagValue.sql), queryTagValue.tags,
-				queryTagValue.params.toArray(),
+		return (simpleItemType != null)
+				? this.spannerTemplate.query(
+						(struct) -> new StructAccessor(struct).getSingleValue(0), statement,
+						spannerQueryOptions)
+				: this.spannerTemplate.query(this.entityType,
+						statement,
 				spannerQueryOptions);
+	}
+
+	private Statement buildStatementFromQueryAndTags(QueryTagValue queryTagValue) {
+		return SpannerStatementQueryExecutor.buildStatementFromSqlWithArgs(
+				queryTagValue.sql, queryTagValue.tags,
+				this.paramStructConvertFunc, null,
+				queryTagValue.params.toArray());
 	}
 
 	private Expression[] detectExpressions(String sql) {

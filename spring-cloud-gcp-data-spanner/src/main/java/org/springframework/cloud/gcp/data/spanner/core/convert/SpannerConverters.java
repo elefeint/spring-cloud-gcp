@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.convert;
@@ -29,13 +29,21 @@ import org.springframework.core.convert.converter.Converter;
 import org.springframework.lang.Nullable;
 
 /**
+ * Default commonly-used custom converters.
+ *
  * @author Chengyuan Zhao
  * @author Balint Pato
  *
  * @since 1.1
  */
-public class SpannerConverters {
+public final class SpannerConverters {
 
+	private SpannerConverters() {
+	}
+
+	/**
+	 * A converter from {@link java.sql.Date} to the Spanner date type.
+	 */
 	// @formatter:off
 	public static final Converter<Date, com.google.cloud.Date>
 					JAVA_SQL_TO_SPANNER_DATE_CONVERTER =
@@ -53,6 +61,9 @@ public class SpannerConverters {
 						}
 					};
 
+	/**
+	 * A converter from the Spanner date type to {@link Date}.
+	 */
 	// @formatter:off
 	public static final Converter<com.google.cloud.Date, java.sql.Date>
 					SPANNER_TO_JAVA_SQL_DATE_CONVERTER =
@@ -67,6 +78,9 @@ public class SpannerConverters {
 						}
 					};
 
+	/**
+	 * A converter from {@link java.util.Date} to the Spanner date type.
+	 */
 	// @formatter:off
 	public static final Converter<java.util.Date, com.google.cloud.Date>
 					JAVA_TO_SPANNER_DATE_CONVERTER = new Converter<java.util.Date, com.google.cloud.Date>() {
@@ -81,6 +95,9 @@ public class SpannerConverters {
 		}
 	};
 
+	/**
+	 * A converter from the Spanner date type to {@link java.util.Date}.
+	 */
 	// @formatter:off
 	public static final Converter<com.google.cloud.Date, java.util.Date> SPANNER_TO_JAVA_DATE_CONVERTER =
 					new Converter<com.google.cloud.Date, java.util.Date>() {
@@ -94,6 +111,9 @@ public class SpannerConverters {
 						}
 					};
 
+	/**
+	 * A converter from {@link Instant} to the Spanner instantaneous time type.
+	 */
 	// @formatter:off
 	public static final Converter<Instant, Timestamp> INSTANT_TIMESTAMP_CONVERTER =
 					new Converter<Instant, Timestamp>() {
@@ -105,6 +125,9 @@ public class SpannerConverters {
 						}
 					};
 
+	/**
+	 * A converter from the Spanner instantaneous time type to {@link Instant}.
+	 */
 	// @formatter:off
 	public static final Converter<Timestamp, Instant> TIMESTAMP_INSTANT_CONVERTER =
 					new Converter<Timestamp, Instant>() {
@@ -116,6 +139,9 @@ public class SpannerConverters {
 						}
 					};
 
+	/**
+	 * A converter from {@link java.sql.Timestamp} to the Spanner instantaneous time type.
+	 */
 	// @formatter:off
 	public static final Converter<java.sql.Timestamp, Timestamp> JAVA_TO_SPANNER_TIMESTAMP_CONVERTER =
 					new Converter<java.sql.Timestamp, Timestamp>() {
@@ -127,6 +153,9 @@ public class SpannerConverters {
 						}
 					};
 
+	/**
+	 * A converter from the Spanner instantaneous time type to {@link java.sql.Timestamp}.
+	 */
 	// @formatter:off
 	public static final Converter<Timestamp, java.sql.Timestamp> SPANNER_TO_JAVA_TIMESTAMP_CONVERTER =
 					new Converter<Timestamp, java.sql.Timestamp>() {
@@ -138,6 +167,9 @@ public class SpannerConverters {
 						}
 					};
 
+	/**
+	 * A converter from a byte array to the Spanner bytes type.
+	 */
 	// @formatter:off
 	public static final Converter<byte[], ByteArray> JAVA_TO_SPANNER_BYTE_ARRAY_CONVERTER =
 					new Converter<byte[], ByteArray>() {
@@ -149,6 +181,9 @@ public class SpannerConverters {
 						}
 					};
 
+	/**
+	 * A converter from the Spanner bytes type to a byte array.
+	 */
 	// @formatter:off
 	public static final Converter<ByteArray, byte[]> SPANNER_TO_JAVA_BYTE_ARRAY_CONVERTER =
 					new Converter<ByteArray, byte[]>() {

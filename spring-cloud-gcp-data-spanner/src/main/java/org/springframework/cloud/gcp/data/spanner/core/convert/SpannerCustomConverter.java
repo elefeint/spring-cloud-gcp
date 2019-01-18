@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.convert;
@@ -26,6 +26,8 @@ import org.springframework.data.convert.CustomConversions;
 import org.springframework.util.Assert;
 
 /**
+ * A custom type converter.
+ *
  * @author Chengyuan Zhao
  * @author Balint Pato
  *
@@ -36,21 +38,19 @@ public abstract class SpannerCustomConverter {
 	private final ConfigurableConversionService conversionService;
 
 	/**
-	 * Constructor
+	 * Constructor.
 	 * @param customConversions must not be null.
 	 * @param conversionService if null, then {@link DefaultConversionService} is used.
 	 */
 	SpannerCustomConverter(CustomConversions customConversions,
 																GenericConversionService conversionService) {
 		Assert.notNull(customConversions, "Valid custom conversions are required!");
-		this.conversionService = conversionService == null
-				? new DefaultConversionService()
-				: conversionService;
+		this.conversionService = (conversionService != null) ? conversionService : new DefaultConversionService();
 
 		customConversions.registerConvertersIn(this.conversionService);
 	}
 
-	boolean canConvert(Class<?> sourceType, Class<?> targetType) {
+	public boolean canConvert(Class<?> sourceType, Class<?> targetType) {
 		Class boxedTargetType = ConversionUtils.boxIfNeeded(targetType);
 		Class boxedSourceType = ConversionUtils.boxIfNeeded(sourceType);
 		return boxedSourceType.equals(boxedTargetType)

@@ -1,25 +1,28 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2019 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.pubsub.core.subscriber;
 
 import java.math.BigInteger;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -33,7 +36,6 @@ import com.google.cloud.pubsub.v1.stub.SubscriberStub;
 import com.google.protobuf.Empty;
 import com.google.pubsub.v1.AcknowledgeRequest;
 import com.google.pubsub.v1.ModifyAckDeadlineRequest;
-import com.google.pubsub.v1.ProjectSubscriptionName;
 import com.google.pubsub.v1.PubsubMessage;
 import com.google.pubsub.v1.PullRequest;
 import com.google.pubsub.v1.PullResponse;
@@ -44,6 +46,7 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import org.springframework.cloud.gcp.pubsub.support.AcknowledgeablePubsubMessage;
@@ -57,10 +60,13 @@ import org.springframework.util.concurrent.ListenableFutureCallback;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
-
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -69,6 +75,7 @@ import static org.mockito.Mockito.when;
  *
  * @author Mike Eltsufin
  * @author Doug Hoard
+ * @author Elena Felder
  */
 @RunWith(MockitoJUnitRunner.class)
 public class PubSubSubscriberTemplateTests {
@@ -76,9 +83,6 @@ public class PubSubSubscriberTemplateTests {
 	private PubSubSubscriberTemplate pubSubSubscriberTemplate;
 
 	private PubsubMessage pubsubMessage = PubsubMessage.newBuilder().build();
-
-	@Mock
-	private BasicAcknowledgeablePubsubMessage basicAcknowledgeablePubsubMessage;
 
 	@Mock
 	private MessageReceiver messageReceiver;
@@ -122,9 +126,8 @@ public class PubSubSubscriberTemplateTests {
 	@Mock
 	private ApiFuture<Empty> apiFuture;
 
-
 	@Before
-	public void setUp() throws InterruptedException, TimeoutException, ExecutionException {
+	public void setUp() {
 		reset(this.subscriberFactory);
 		reset(this.subscriberStub);
 		reset(this.subscriber);
@@ -135,19 +138,19 @@ public class PubSubSubscriberTemplateTests {
 
 		// for subscribe with MessageReceiver
 		when(this.subscriberFactory.createSubscriber(any(String.class), any(MessageReceiver.class)))
-				.then(invocation -> {
+				.then((invocation) -> {
 					this.messageReceiver = invocation.getArgument(1);
 					return this.subscriber;
 				});
 
-		when(this.subscriber.startAsync()).then(invocation -> {
+		when(this.subscriber.startAsync()).then((invocation) -> {
 			this.messageReceiver.receiveMessage(this.pubsubMessage, this.ackReplyConsumer);
 			return null;
 		});
 
 		// for pull
 		when(this.subscriberFactory.createPullRequest(any(String.class), any(Integer.class), any(Boolean.class)))
-				.then(invocation -> PullRequest.newBuilder().setSubscription(invocation.getArgument(0)).build());
+				.then((invocation) -> PullRequest.newBuilder().setSubscription(invocation.getArgument(0)).build());
 
 		when(this.subscriberFactory.createSubscriberStub()).thenReturn(this.subscriberStub);
 
@@ -159,16 +162,13 @@ public class PubSubSubscriberTemplateTests {
 
 		when(this.modifyAckDeadlineCallable.futureCall(any(ModifyAckDeadlineRequest.class))).thenReturn(this.apiFuture);
 
-		doAnswer(invocation -> {
+		doAnswer((invocation) -> {
 			Runnable runnable = invocation.getArgument(0);
 			runnable.run();
 			return null;
 		}).when(this.apiFuture).addListener(any(Runnable.class), any(Executor.class));
 
 		when(this.apiFuture.isDone()).thenReturn(true);
-
-		ProjectSubscriptionName projectSubscriptionName = ProjectSubscriptionName.of(
-				this.subscriberFactory.getProjectId(), "sub1");
 
 		doNothing().when(this.ackReplyConsumer).ack();
 		doNothing().when(this.ackReplyConsumer).nack();
@@ -180,12 +180,12 @@ public class PubSubSubscriberTemplateTests {
 				.addReceivedMessages(ReceivedMessage.newBuilder().setMessage(this.pubsubMessage).build()).build());
 
 		// create object under test
-		this.pubSubSubscriberTemplate = new PubSubSubscriberTemplate(this.subscriberFactory);
+		this.pubSubSubscriberTemplate = spy(new PubSubSubscriberTemplate(this.subscriberFactory));
 		this.pubSubSubscriberTemplate.setMessageConverter(this.messageConverter);
 	}
 
 	@Test
-	public void testSubscribeAndAck() throws InterruptedException, ExecutionException, TimeoutException {
+	public void testSubscribe_AndManualAck() throws InterruptedException, ExecutionException, TimeoutException {
 		this.pubSubSubscriberTemplate.subscribe("sub1", this.consumer);
 
 		verify(this.subscriber).startAsync();
@@ -208,7 +208,7 @@ public class PubSubSubscriberTemplateTests {
 	}
 
 	@Test
-	public void testSubscribeAndNack() throws InterruptedException, ExecutionException, TimeoutException {
+	public void testSubscribe_AndManualNack() throws InterruptedException, ExecutionException, TimeoutException {
 		this.pubSubSubscriberTemplate.subscribe("sub1", this.consumer);
 
 		verify(this.subscriber).startAsync();
@@ -231,7 +231,8 @@ public class PubSubSubscriberTemplateTests {
 	}
 
 	@Test
-	public void testSubscribeConvertAndAck() throws InterruptedException, ExecutionException, TimeoutException {
+	public void testSubscribeAndConvert_AndManualAck()
+			throws InterruptedException, ExecutionException, TimeoutException {
 		this.pubSubSubscriberTemplate.subscribeAndConvert("sub1", this.convertedConsumer, Boolean.class);
 
 		verify(this.subscriber).startAsync();
@@ -259,7 +260,8 @@ public class PubSubSubscriberTemplateTests {
 	}
 
 	@Test
-	public void testSubscribeConvertAndNack() throws InterruptedException, ExecutionException, TimeoutException {
+	public void testSubscribeAndConvert_AndManualNack()
+			throws InterruptedException, ExecutionException, TimeoutException {
 		this.pubSubSubscriberTemplate.subscribeAndConvert("sub1", this.convertedConsumer, Boolean.class);
 
 		verify(this.subscriber).startAsync();
@@ -287,10 +289,10 @@ public class PubSubSubscriberTemplateTests {
 	}
 
 	@Test
-	public void testPullAndAck() throws InterruptedException, ExecutionException, TimeoutException {
-		List<AcknowledgeablePubsubMessage> result =
-				this.pubSubSubscriberTemplate.pull(
-						"sub2", 1, true);
+	public void testPull_AndManualAck() throws InterruptedException, ExecutionException, TimeoutException {
+
+		List<AcknowledgeablePubsubMessage> result = this.pubSubSubscriberTemplate.pull(
+				"sub2", 1, true);
 
 		assertThat(result.size()).isEqualTo(1);
 		assertThat(result.get(0).getPubsubMessage()).isSameAs(this.pubsubMessage);
@@ -315,10 +317,9 @@ public class PubSubSubscriberTemplateTests {
 	}
 
 	@Test
-	public void testPullAndNack() throws InterruptedException, ExecutionException, TimeoutException {
-		List<AcknowledgeablePubsubMessage> result =
-				this.pubSubSubscriberTemplate.pull(
-						"sub2", 1, true);
+	public void testPull_AndManualNack() throws InterruptedException, ExecutionException, TimeoutException {
+		List<AcknowledgeablePubsubMessage> result = this.pubSubSubscriberTemplate.pull(
+				"sub2", 1, true);
 
 		assertThat(result.size()).isEqualTo(1);
 		assertThat(result.get(0).getPubsubMessage()).isSameAs(this.pubsubMessage);
@@ -343,10 +344,63 @@ public class PubSubSubscriberTemplateTests {
 	}
 
 	@Test
+	public void testPull_AndManualMultiSubscriptionAck()
+			throws InterruptedException, ExecutionException, TimeoutException {
+		ExecutorService mockExecutor = Mockito.mock(ExecutorService.class);
+		this.pubSubSubscriberTemplate.setAckExecutor(mockExecutor);
+
+		List<AcknowledgeablePubsubMessage> result1 = this.pubSubSubscriberTemplate.pull(
+				"sub1", 1, true);
+		List<AcknowledgeablePubsubMessage> result2 = this.pubSubSubscriberTemplate.pull(
+				"sub2", 1, true);
+		Set<AcknowledgeablePubsubMessage> combinedMessages = new HashSet<>(result1);
+		combinedMessages.addAll(result2);
+
+		assertThat(combinedMessages.size()).isEqualTo(2);
+
+		TestListenableFutureCallback testListenableFutureCallback = new TestListenableFutureCallback();
+
+		ListenableFuture<Void> listenableFuture = this.pubSubSubscriberTemplate.ack(combinedMessages);
+		assertThat(listenableFuture).isNotNull();
+
+		listenableFuture.addCallback(testListenableFutureCallback);
+		listenableFuture.get(10L, TimeUnit.SECONDS);
+
+		assertThat(listenableFuture.isDone()).isTrue();
+		assertThat(testListenableFutureCallback.getThrowable()).isNull();
+		verify(this.ackCallable, times(2)).futureCall(any(AcknowledgeRequest.class));
+		verify(this.apiFuture, times(2)).addListener(any(), same(mockExecutor));
+	}
+
+	@Test
+	public void testPullAndAck() {
+		List<PubsubMessage> result = this.pubSubSubscriberTemplate.pullAndAck(
+				"sub2", 1, true);
+
+		assertThat(result.size()).isEqualTo(1);
+
+		PubsubMessage pubsubMessage = result.get(0);
+		assertThat(pubsubMessage).isSameAs(this.pubsubMessage);
+
+		verify(this.pubSubSubscriberTemplate, times(1)).ack(any());
+	}
+
+	@Test
+	public void testPullAndAck_NoMessages() {
+		when(this.pullCallable.call(any(PullRequest.class))).thenReturn(PullResponse.newBuilder().build());
+
+		List<PubsubMessage> result = this.pubSubSubscriberTemplate.pullAndAck(
+				"sub2", 1, true);
+
+		assertThat(result.size()).isEqualTo(0);
+
+		verify(this.pubSubSubscriberTemplate, never()).ack(any());
+	}
+
+	@Test
 	public void testPullAndConvert() {
-		List<ConvertedAcknowledgeablePubsubMessage<BigInteger>> result =
-				this.pubSubSubscriberTemplate.pullAndConvert(
-						"sub2", 1, true, BigInteger.class);
+		List<ConvertedAcknowledgeablePubsubMessage<BigInteger>> result = this.pubSubSubscriberTemplate.pullAndConvert(
+				"sub2", 1, true, BigInteger.class);
 
 		verify(this.messageConverter).fromPubSubMessage(this.pubsubMessage, BigInteger.class);
 
@@ -354,21 +408,6 @@ public class PubSubSubscriberTemplateTests {
 		assertThat(result.get(0).getPubsubMessage()).isSameAs(this.pubsubMessage);
 		assertThat(result.get(0).getProjectSubscriptionName().getProject()).isEqualTo("testProject");
 		assertThat(result.get(0).getProjectSubscriptionName().getSubscription()).isEqualTo("sub2");
-	}
-
-
-	private class TestConsumer implements Consumer<BasicAcknowledgeablePubsubMessage> {
-
-		private BasicAcknowledgeablePubsubMessage basicAcknowledgeablePubsubMessage;
-
-		@Override
-		public void accept(BasicAcknowledgeablePubsubMessage basicAcknowledgeablePubsubMessage) {
-			this.basicAcknowledgeablePubsubMessage = basicAcknowledgeablePubsubMessage;
-		}
-
-		public BasicAcknowledgeablePubsubMessage getMessage() {
-			return this.basicAcknowledgeablePubsubMessage;
-		}
 	}
 
 	private class TestListenableFutureCallback implements ListenableFutureCallback<Void> {

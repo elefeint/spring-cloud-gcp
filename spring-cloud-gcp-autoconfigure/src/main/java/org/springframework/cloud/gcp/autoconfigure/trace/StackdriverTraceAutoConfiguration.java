@@ -1,17 +1,17 @@
 /*
- *  Copyright 2017-2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.autoconfigure.trace;
@@ -27,8 +27,9 @@ import brave.sampler.Sampler;
 import com.google.api.gax.core.CredentialsProvider;
 import com.google.api.gax.core.ExecutorProvider;
 import com.google.api.gax.core.FixedExecutorProvider;
-import com.google.api.gax.rpc.HeaderProvider;
 import io.grpc.CallOptions;
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
 import io.grpc.auth.MoreCallCredentials;
 import zipkin2.Span;
 import zipkin2.codec.BytesEncoder;
@@ -49,7 +50,7 @@ import org.springframework.cloud.gcp.autoconfigure.trace.sleuth.StackdriverHttpC
 import org.springframework.cloud.gcp.autoconfigure.trace.sleuth.StackdriverHttpServerParser;
 import org.springframework.cloud.gcp.core.DefaultCredentialsProvider;
 import org.springframework.cloud.gcp.core.GcpProjectIdProvider;
-import org.springframework.cloud.gcp.core.UsageTrackingHeaderProvider;
+import org.springframework.cloud.gcp.core.UserAgentHeaderProvider;
 import org.springframework.cloud.sleuth.autoconfig.SleuthProperties;
 import org.springframework.cloud.sleuth.autoconfig.TraceAutoConfiguration;
 import org.springframework.cloud.sleuth.instrument.web.TraceHttpAutoConfiguration;
@@ -61,9 +62,12 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 /**
+ * Config for Stackdriver Trace.
+ *
  * @author Ray Tsang
  * @author João André Martins
  * @author Mike Eltsufin
+ * @author Chengyuan Zhao
  */
 @Configuration
 @EnableConfigurationProperties(
@@ -77,12 +81,12 @@ public class StackdriverTraceAutoConfiguration {
 
 	private CredentialsProvider finalCredentialsProvider;
 
-	private HeaderProvider headerProvider = new UsageTrackingHeaderProvider(this.getClass());
+	private UserAgentHeaderProvider headerProvider = new UserAgentHeaderProvider(this.getClass());
 
 	public StackdriverTraceAutoConfiguration(GcpProjectIdProvider gcpProjectIdProvider,
 			CredentialsProvider credentialsProvider,
 			GcpTraceProperties gcpTraceProperties) throws IOException {
-		this.finalProjectIdProvider = gcpTraceProperties.getProjectId() != null
+		this.finalProjectIdProvider = (gcpTraceProperties.getProjectId() != null)
 				? gcpTraceProperties::getProjectId
 				: gcpProjectIdProvider;
 		this.finalCredentialsProvider =
@@ -106,10 +110,19 @@ public class StackdriverTraceAutoConfiguration {
 				Executors.newScheduledThreadPool(traceProperties.getNumExecutorThreads()));
 	}
 
+	@Bean(destroyMethod = "shutdownNow")
+	@ConditionalOnMissingBean(name = "stackdriverSenderChannel")
+	public ManagedChannel stackdriverSenderChannel() {
+		return ManagedChannelBuilder.forTarget("cloudtrace.googleapis.com")
+				.userAgent(this.headerProvider.getUserAgent())
+				.build();
+	}
+
 	@Bean
 	@ConditionalOnMissingBean
 	public Sender stackdriverSender(GcpTraceProperties traceProperties,
-			@Qualifier("traceExecutorProvider") ExecutorProvider executorProvider)
+			@Qualifier("traceExecutorProvider") ExecutorProvider executorProvider,
+			@Qualifier("stackdriverSenderChannel") ManagedChannel channel)
 			throws IOException {
 		CallOptions callOptions = CallOptions.DEFAULT
 				.withCallCredentials(
@@ -146,7 +159,7 @@ public class StackdriverTraceAutoConfiguration {
 			}
 		}
 
-		return StackdriverSender.newBuilder()
+		return StackdriverSender.newBuilder(channel)
 				.projectId(this.finalProjectIdProvider.getProjectId())
 				.callOptions(callOptions)
 				.build();
@@ -164,6 +177,9 @@ public class StackdriverTraceAutoConfiguration {
 		return StackdriverTracePropagation.FACTORY;
 	}
 
+	/**
+	 * Configuration for refresh scope probability based sampler.
+	 */
 	@Configuration
 	@ConditionalOnClass(RefreshScope.class)
 	protected static class RefreshScopedProbabilityBasedSamplerConfiguration {
@@ -175,6 +191,9 @@ public class StackdriverTraceAutoConfiguration {
 		}
 	}
 
+	/**
+	 * Configuration for non-refresh scope probability based sampler.
+	 */
 	@Configuration
 	@ConditionalOnMissingClass("org.springframework.cloud.context.config.annotation.RefreshScope")
 	protected static class NonRefreshScopeProbabilityBasedSamplerConfiguration {
@@ -185,6 +204,9 @@ public class StackdriverTraceAutoConfiguration {
 		}
 	}
 
+	/**
+	 * Configuration for Sleuth.
+	 */
 	@Configuration
 	@ConditionalOnProperty(name = "spring.sleuth.http.enabled",
 			havingValue = "true", matchIfMissing = true)

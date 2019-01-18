@@ -1,17 +1,17 @@
 /*
- *  Copyright 2017-2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.pubsub.integration.inbound;
@@ -20,6 +20,8 @@ import java.util.Map;
 
 import com.google.cloud.pubsub.v1.AckReplyConsumer;
 import com.google.cloud.pubsub.v1.Subscriber;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 import org.springframework.cloud.gcp.pubsub.core.PubSubException;
 import org.springframework.cloud.gcp.pubsub.core.subscriber.PubSubSubscriberOperations;
@@ -29,7 +31,6 @@ import org.springframework.cloud.gcp.pubsub.support.GcpPubSubHeaders;
 import org.springframework.cloud.gcp.pubsub.support.converter.ConvertedBasicAcknowledgeablePubsubMessage;
 import org.springframework.integration.endpoint.MessageProducerSupport;
 import org.springframework.integration.mapping.HeaderMapper;
-import org.springframework.integration.support.MessageBuilder;
 import org.springframework.util.Assert;
 
 /**
@@ -39,8 +40,11 @@ import org.springframework.util.Assert;
  * @author João André Martins
  * @author Mike Eltsufin
  * @author Doug Hoard
+ * @author Taylor Burke
  */
 public class PubSubInboundChannelAdapter extends MessageProducerSupport {
+
+	private static final Log LOGGER = LogFactory.getLog(PubSubInboundChannelAdapter.class);
 
 	private final String subscriptionName;
 
@@ -115,27 +119,36 @@ public class PubSubInboundChannelAdapter extends MessageProducerSupport {
 		super.doStop();
 	}
 
+	@SuppressWarnings("deprecation")
 	private void consumeMessage(ConvertedBasicAcknowledgeablePubsubMessage message) {
 		Map<String, Object> messageHeaders =
 				this.headerMapper.toHeaders(message.getPubsubMessage().getAttributesMap());
 
 		if (this.ackMode == AckMode.MANUAL) {
-			// Send the consumer downstream so user decides on when to ack/nack.
+			// Send the original message downstream so user decides on when to ack/nack.
+			messageHeaders.put(GcpPubSubHeaders.ORIGINAL_MESSAGE, message);
+
+			// Deprecated mechanism for manual (n)acking.
 			messageHeaders.put(GcpPubSubHeaders.ACKNOWLEDGEMENT, new AckReplyConsumer() {
 				@Override
 				public void ack() {
+					LOGGER.warn("ACKNOWLEDGEMENT header is deprecated. Please use ORIGINAL_MESSAGE header to ack.");
 					message.ack();
 				}
 
 				@Override
 				public void nack() {
+					LOGGER.warn("ACKNOWLEDGEMENT header is deprecated. Please use ORIGINAL_MESSAGE header to nack.");
 					message.nack();
 				}
 			});
 		}
 
 		try {
-			sendMessage(MessageBuilder.withPayload(message.getPayload()).copyHeaders(messageHeaders).build());
+			sendMessage(getMessageBuilderFactory()
+					.withPayload(message.getPayload())
+					.copyHeaders(messageHeaders)
+					.build());
 		}
 		catch (RuntimeException re) {
 			if (this.ackMode == AckMode.AUTO) {

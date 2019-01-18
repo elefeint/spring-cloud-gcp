@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.pubsub.integration.inbound;
@@ -22,7 +22,9 @@ import java.util.function.Consumer;
 import com.google.pubsub.v1.PubsubMessage;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 
@@ -30,13 +32,17 @@ import org.springframework.cloud.gcp.pubsub.core.PubSubOperations;
 import org.springframework.cloud.gcp.pubsub.core.subscriber.PubSubSubscriberOperations;
 import org.springframework.cloud.gcp.pubsub.integration.AckMode;
 import org.springframework.cloud.gcp.pubsub.support.converter.ConvertedBasicAcknowledgeablePubsubMessage;
+import org.springframework.integration.support.MutableMessageBuilder;
+import org.springframework.integration.support.MutableMessageBuilderFactory;
 import org.springframework.messaging.MessageChannel;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.internal.verification.VerificationModeFactory.times;
 
 /**
  * {@link PubSubInboundChannelAdapter} unit tests.
@@ -44,14 +50,25 @@ import static org.mockito.Mockito.when;
  * @author João André Martins
  * @author Doug Hoard
  * @author Mike Eltsufin
+ * @author Taylor Burke
+ * @author Chengyuan Zhao
  */
 @RunWith(MockitoJUnitRunner.class)
 public class PubSubInboundChannelAdapterTests {
 
+	/**
+	 * The NACK string.
+	 */
 	public static final String NACK = "NACK";
 
+	/**
+	 * The canned exception message when sending a message.
+	 */
 	public static final String EXCEPTION_MESSAGE = "Forced exception sending message";
 
+	/**
+	 * A canned exception message.
+	 */
 	public static final String EXPECTED_EXCEPTION = "Expected exception";
 
 	private PubSubOperations pubSubOperations;
@@ -62,6 +79,12 @@ public class PubSubInboundChannelAdapterTests {
 
 	private String value;
 
+	/**
+	 * used to check exception messages and types.
+	 */
+	@Rule
+	public ExpectedException expectedException = ExpectedException.none();
+
 	@Before
 	public void setUp() throws UnsupportedEncodingException {
 		this.pubSubOperations = mock(PubSubOperations.class);
@@ -70,7 +93,7 @@ public class PubSubInboundChannelAdapterTests {
 		this.value = null;
 		ConvertedBasicAcknowledgeablePubsubMessage message = mock(ConvertedBasicAcknowledgeablePubsubMessage.class);
 
-		doAnswer(invocation -> {
+		doAnswer((invocation) -> {
 			this.value = NACK;
 			return null;
 		}).when(message).nack();
@@ -82,7 +105,7 @@ public class PubSubInboundChannelAdapterTests {
 				new RuntimeException(EXCEPTION_MESSAGE));
 
 		when(this.pubSubSubscriberOperations.subscribeAndConvert(
-				anyString(), any(Consumer.class), any(Class.class))).then(invocationOnMock -> {
+				anyString(), any(Consumer.class), any(Class.class))).then((invocationOnMock) -> {
 					Consumer<ConvertedBasicAcknowledgeablePubsubMessage> messageConsumer =
 							invocationOnMock.getArgument(1);
 					messageConsumer.accept(message);
@@ -90,8 +113,10 @@ public class PubSubInboundChannelAdapterTests {
 		});
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testNonNullAckMode() {
+		this.expectedException.expect(IllegalArgumentException.class);
+		this.expectedException.expectMessage("The acknowledgement mode can't be null.");
 		PubSubInboundChannelAdapter adapter = new PubSubInboundChannelAdapter(
 				this.pubSubOperations, "testSubscription");
 
@@ -111,11 +136,34 @@ public class PubSubInboundChannelAdapterTests {
 
 			Assert.fail(EXPECTED_EXCEPTION);
 		}
-		catch (Throwable t) {
-			Assert.assertEquals(EXCEPTION_MESSAGE, t.getCause().getMessage());
+		catch (Throwable ex) {
+			Assert.assertEquals(EXCEPTION_MESSAGE, ex.getCause().getMessage());
 		}
 
 		Assert.assertEquals(NACK, this.value);
+	}
+
+	@Test
+	public void testMessageBuilder() {
+		PubSubInboundChannelAdapter adapter = new PubSubInboundChannelAdapter(
+				this.pubSubSubscriberOperations, "testSubscription");
+
+		MutableMessageBuilderFactory factory = mock(MutableMessageBuilderFactory.class);
+		when(factory.withPayload(any())).thenReturn(MutableMessageBuilder.withPayload("payload"));
+
+		adapter.setMessageBuilderFactory(factory);
+		adapter.setOutputChannel(this.messageChannel);
+
+		try {
+			adapter.start();
+
+			Assert.fail(EXPECTED_EXCEPTION);
+		}
+		catch (Throwable ex) {
+			Assert.assertEquals(EXCEPTION_MESSAGE, ex.getCause().getMessage());
+		}
+
+		verify(factory, times(1)).withPayload(any());
 	}
 
 	@Test
@@ -131,8 +179,8 @@ public class PubSubInboundChannelAdapterTests {
 
 			Assert.fail(EXPECTED_EXCEPTION);
 		}
-		catch (Throwable t) {
-			Assert.assertEquals(EXCEPTION_MESSAGE, t.getCause().getMessage());
+		catch (Throwable ex) {
+			Assert.assertEquals(EXCEPTION_MESSAGE, ex.getCause().getMessage());
 		}
 
 		Assert.assertNull(this.value);

@@ -1,17 +1,17 @@
 /*
- *  Copyright 2017-2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.autoconfigure.sql;
@@ -56,6 +56,7 @@ import org.springframework.util.StringUtils;
  * @author João André Martins
  * @author Artem Bilan
  * @author Mike Eltsufin
+ * @author Chengyuan Zhao
  */
 @Configuration
 @ConditionalOnClass({ DataSource.class, EmbeddedDatabaseType.class, CredentialFactory.class })
@@ -67,9 +68,12 @@ import org.springframework.util.StringUtils;
 		JndiDataSourceAutoConfiguration.class,
 		XADataSourceAutoConfiguration.class })
 @AutoConfigureAfter(GcpContextAutoConfiguration.class)
-public class GcpCloudSqlAutoConfiguration {
+public abstract class GcpCloudSqlAutoConfiguration { //NOSONAR squid:S1610 must be a class for Spring
 
-	public final static String INSTANCE_CONNECTION_NAME_HELP_URL =
+	/**
+	 * URL for help instructions.
+	 */
+	public static final String INSTANCE_CONNECTION_NAME_HELP_URL =
 			"https://github.com/spring-cloud/spring-cloud-gcp/tree/master/"
 					+ "spring-cloud-gcp-starters/spring-cloud-gcp-starter-sql"
 					+ "#google-cloud-sql-instance-connection-name";
@@ -223,6 +227,8 @@ public class GcpCloudSqlAutoConfiguration {
 		 *
 		 * <p>If user didn't specify credentials, the socket factory already does the right thing by
 		 * using the application default credentials by default. So we don't need to do anything.
+		 * @param gcpCloudSqlProperties the Cloud SQL properties to use
+		 * @param gcpProperties the GCP properties to use
 		 */
 		private void setCredentialsFileProperty(GcpCloudSqlProperties gcpCloudSqlProperties,
 				GcpProperties gcpProperties) {
@@ -233,6 +239,7 @@ public class GcpCloudSqlAutoConfiguration {
 				if (gcpCloudSqlProperties.getCredentials().getLocation() != null) {
 					credentialsLocationFile =
 							gcpCloudSqlProperties.getCredentials().getLocation().getFile();
+					setSystemProperties(credentialsLocationFile);
 				}
 				// Then, the global credential.
 				else if (gcpProperties != null
@@ -240,17 +247,18 @@ public class GcpCloudSqlAutoConfiguration {
 					// A resource might not be in the filesystem, but the Cloud SQL credential must.
 					credentialsLocationFile =
 							gcpProperties.getCredentials().getLocation().getFile();
+					setSystemProperties(credentialsLocationFile);
 				}
-				else {
-					// Do nothing, let sockets factory use application default credentials.
-					return;
-				}
+
+				// Else do nothing, let sockets factory use application default credentials.
+
 			}
 			catch (IOException ioe) {
 				LOGGER.info("Error reading Cloud SQL credentials file.", ioe);
-				return;
 			}
+		}
 
+		private void setSystemProperties(File credentialsLocationFile) {
 			// This should happen if the Spring resource isn't in the filesystem, but a URL,
 			// classpath file, etc.
 			if (credentialsLocationFile == null) {

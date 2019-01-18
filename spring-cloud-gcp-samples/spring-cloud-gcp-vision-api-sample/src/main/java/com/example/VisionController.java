@@ -1,102 +1,86 @@
 /*
- *  Copyright 2017 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.example;
 
-import java.util.Collections;
+import java.util.Map;
+import java.util.stream.Collectors;
 
-import com.google.cloud.vision.v1.AnnotateImageRequest;
 import com.google.cloud.vision.v1.AnnotateImageResponse;
-import com.google.cloud.vision.v1.BatchAnnotateImagesResponse;
 import com.google.cloud.vision.v1.EntityAnnotation;
-import com.google.cloud.vision.v1.Feature;
-import com.google.cloud.vision.v1.Image;
+import com.google.cloud.vision.v1.Feature.Type;
 import com.google.cloud.vision.v1.ImageAnnotatorClient;
-import com.google.protobuf.ByteString;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cloud.gcp.vision.CloudVisionTemplate;
 import org.springframework.core.io.ResourceLoader;
-import org.springframework.util.StreamUtils;
+import org.springframework.ui.ModelMap;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.ModelAndView;
 
 /**
- * Code sample that shows how Spring Cloud GCP can be leveraged to use Google Cloud Client Libraries.
+ * Code sample that shows how Spring Cloud GCP can be leveraged to use Google Cloud Client
+ * Libraries.
  *
- * <p></p>This uses the Cloud Vision API with the {@link ImageAnnotatorClient}, which is configured and produced
- * in {@link Application}. See {@link Application#imageAnnotatorClient(com.google.api.gax.core.CredentialsProvider)}
- * to understand how the client is produced with the help of spring-cloud-gcp-starter.
+ * <p>This uses the Cloud Vision API with the {@link ImageAnnotatorClient}, which is
+ * configured and provided by the spring-cloud-gcp-starter-vision module.
  *
  * @author João André Martins
+ * @author Daniel Zou
  */
 @RestController
 public class VisionController {
+
 	@Autowired
 	private ResourceLoader resourceLoader;
 
 	@Autowired
-	private ImageAnnotatorClient imageAnnotatorClient;
+	private CloudVisionTemplate cloudVisionTemplate;
 
 	/**
 	 * This method downloads an image from a URL and sends its contents to the Vision API for label detection.
 	 *
 	 * @param imageUrl the URL of the image
+	 * @param map the model map to use
 	 * @return a string with the list of labels and percentage of certainty
-	 * @throws Exception if the Vision API call produces an error
+	 * @throws CloudVisionTemplate if the Vision API call produces an error
 	 */
-	@GetMapping("/vision")
-	public String uploadImage(String imageUrl) throws Exception {
-		// Copies the content of the image to memory.
-		byte[] imageBytes = StreamUtils.copyToByteArray(this.resourceLoader.getResource(imageUrl).getInputStream());
+	@GetMapping("/extractLabels")
+	public ModelAndView extractLabels(String imageUrl, ModelMap map) {
+		AnnotateImageResponse response = this.cloudVisionTemplate.analyzeImage(
+				this.resourceLoader.getResource(imageUrl), Type.LABEL_DETECTION);
 
-		BatchAnnotateImagesResponse responses;
+		Map<String, Float> imageLabels =
+				response.getLabelAnnotationsList()
+						.stream()
+						.collect(Collectors.toMap(
+								EntityAnnotation::getDescription, EntityAnnotation::getScore));
 
-		Image image = Image.newBuilder().setContent(ByteString.copyFrom(imageBytes)).build();
+		map.addAttribute("annotations", imageLabels);
+		map.addAttribute("imageUrl", imageUrl);
 
-		// Sets the type of request to label detection, to detect broad sets of categories in an image.
-		Feature feature = Feature.newBuilder().setType(Feature.Type.LABEL_DETECTION).build();
-		AnnotateImageRequest request =
-				AnnotateImageRequest.newBuilder().setImage(image).addFeatures(feature).build();
-		responses = this.imageAnnotatorClient.batchAnnotateImages(Collections.singletonList(request));
-
-		StringBuilder responseBuilder = new StringBuilder("<table border=\"1\">");
-
-		responseBuilder.append("<tr><th>description</th><th>score</th></tr>");
-
-		// We're only expecting one response.
-		if (responses.getResponsesCount() == 1) {
-			AnnotateImageResponse response = responses.getResponses(0);
-
-			if (response.hasError()) {
-				throw new Exception(response.getError().getMessage());
-			}
-
-			for (EntityAnnotation annotation : response.getLabelAnnotationsList()) {
-				responseBuilder.append("<tr><td>")
-						.append(annotation.getDescription())
-						.append("</td><td>")
-						.append(annotation.getScore())
-						.append("</td></tr>");
-			}
-		}
-
-		responseBuilder.append("</table>");
-
-		responseBuilder.append("<p><img src='" + imageUrl + "'/></p>");
-
-		return responseBuilder.toString();
+		return new ModelAndView("result", map);
 	}
+
+	@GetMapping("/extractText")
+	public String extractText(String imageUrl) {
+		String textFromImage = this.cloudVisionTemplate.extractTextFromImage(
+				this.resourceLoader.getResource(imageUrl));
+		return "Text from image: " + textFromImage;
+	}
+
 }

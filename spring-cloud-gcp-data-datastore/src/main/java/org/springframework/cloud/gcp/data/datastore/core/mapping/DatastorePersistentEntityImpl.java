@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.datastore.core.mapping;
@@ -20,6 +20,7 @@ import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.expression.BeanFactoryAccessor;
 import org.springframework.context.expression.BeanFactoryResolver;
+import org.springframework.data.mapping.PropertyHandler;
 import org.springframework.data.mapping.model.BasicPersistentEntity;
 import org.springframework.data.util.TypeInformation;
 import org.springframework.expression.Expression;
@@ -33,9 +34,9 @@ import org.springframework.util.StringUtils;
 
 /**
  * Metadata class for entities stored in Datastore.
+ * @param <T> the type of the persistent entity
  *
  * @author Chengyuan Zhao
- *
  * @since 1.1
  */
 public class DatastorePersistentEntityImpl<T>
@@ -53,7 +54,7 @@ public class DatastorePersistentEntityImpl<T>
 	private StandardEvaluationContext context;
 
 	/**
-	 * Constructor
+	 * Constructor.
 	 * @param information type information about the underlying entity type.
 	 */
 	public DatastorePersistentEntityImpl(TypeInformation<T> information) {
@@ -81,12 +82,12 @@ public class DatastorePersistentEntityImpl<T>
 		Expression expression = PARSER.parseExpression(this.kind.name(),
 				ParserContext.TEMPLATE_EXPRESSION);
 
-		return expression instanceof LiteralExpression ? null : expression;
+		return (expression instanceof LiteralExpression) ? null : expression;
 	}
 
 	@Override
 	public String kindName() {
-		return this.kindNameExpression == null ? this.kindName
+		return (this.kindNameExpression == null) ? this.kindName
 				: this.kindNameExpression.getValue(this.context, String.class);
 	}
 
@@ -98,6 +99,38 @@ public class DatastorePersistentEntityImpl<T>
 							+ getType());
 		}
 		return getIdProperty();
+	}
+
+	@Override
+	public void doWithColumnBackedProperties(
+			PropertyHandler<DatastorePersistentProperty> handler) {
+		doWithProperties(
+				(PropertyHandler<DatastorePersistentProperty>) (datastorePersistentProperty) -> {
+					if (datastorePersistentProperty.isColumnBacked()) {
+						handler.doWithPersistentProperty(datastorePersistentProperty);
+					}
+				});
+	}
+
+	@Override
+	public void doWithDescendantProperties(
+			PropertyHandler<DatastorePersistentProperty> handler) {
+		doWithProperties(
+				(PropertyHandler<DatastorePersistentProperty>) (datastorePersistentProperty) -> {
+					if (datastorePersistentProperty.isDescendants()) {
+						handler.doWithPersistentProperty(datastorePersistentProperty);
+					}
+				});
+	}
+
+	@Override
+	public void doWithReferenceProperties(PropertyHandler<DatastorePersistentProperty> handler) {
+		doWithProperties(
+				(PropertyHandler<DatastorePersistentProperty>) (datastorePersistentProperty) -> {
+					if (datastorePersistentProperty.isReference()) {
+						handler.doWithPersistentProperty(datastorePersistentProperty);
+					}
+				});
 	}
 
 	@Override

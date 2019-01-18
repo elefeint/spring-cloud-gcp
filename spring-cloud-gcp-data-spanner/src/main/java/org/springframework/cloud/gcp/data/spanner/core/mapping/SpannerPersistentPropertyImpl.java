@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.mapping;
@@ -20,6 +20,9 @@ import java.util.List;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.stream.Collectors;
+
+import com.google.cloud.spanner.Type.Code;
+import com.google.spanner.v1.TypeCode;
 
 import org.springframework.data.mapping.Association;
 import org.springframework.data.mapping.MappingException;
@@ -49,7 +52,7 @@ public class SpannerPersistentPropertyImpl
 	private FieldNamingStrategy fieldNamingStrategy;
 
 	/**
-	 * Creates a new {@link SpannerPersistentPropertyImpl}
+	 * Creates a new {@link SpannerPersistentPropertyImpl}.
 	 *
 	 * @param property the property to store
 	 * @param owner the entity to which this property belongs
@@ -61,9 +64,9 @@ public class SpannerPersistentPropertyImpl
 			PersistentEntity<?, SpannerPersistentProperty> owner,
 			SimpleTypeHolder simpleTypeHolder, FieldNamingStrategy fieldNamingStrategy) {
 		super(property, owner, simpleTypeHolder);
-		this.fieldNamingStrategy = fieldNamingStrategy == null
-				? PropertyNameFieldNamingStrategy.INSTANCE
-				: fieldNamingStrategy;
+		this.fieldNamingStrategy = (fieldNamingStrategy != null)
+				? fieldNamingStrategy
+				: PropertyNameFieldNamingStrategy.INSTANCE;
 	}
 
 	/**
@@ -73,7 +76,7 @@ public class SpannerPersistentPropertyImpl
 	public Iterable<? extends TypeInformation<?>> getPersistentEntityTypes() {
 		return StreamUtils
 				.createStreamFromIterator(super.getPersistentEntityTypes().iterator())
-				.filter(typeInfo -> typeInfo.getType().isAnnotationPresent(Table.class))
+				.filter((typeInfo) -> typeInfo.getType().isAnnotationPresent(Table.class))
 				.collect(Collectors.toList());
 	}
 
@@ -153,11 +156,33 @@ public class SpannerPersistentPropertyImpl
 
 	@Override
 	public OptionalLong getMaxColumnLength() {
-		ColumnLength annotation = findAnnotation(ColumnLength.class);
-		if (annotation == null) {
+		Column annotation = findAnnotation(Column.class);
+		if (annotation == null || annotation.spannerTypeMaxLength() < 0) {
 			return OptionalLong.empty();
 		}
-		return OptionalLong.of(annotation.maxLength());
+		return OptionalLong.of(annotation.spannerTypeMaxLength());
+	}
+
+	@Override
+	public boolean isGenerateSchemaNotNull() {
+		Column annotation = findAnnotation(Column.class);
+		return annotation != null && !annotation.nullable();
+	}
+
+	@Override
+	public boolean isCommitTimestamp() {
+		Column annotation = findAnnotation(Column.class);
+		return annotation != null && annotation.spannerCommitTimestamp();
+	}
+
+	@Override
+	public Code getAnnotatedColumnItemType() {
+		Column annotation = findAnnotation(Column.class);
+		if (annotation == null
+				|| annotation.spannerType() == TypeCode.TYPE_CODE_UNSPECIFIED) {
+			return null;
+		}
+		return Code.valueOf(annotation.spannerType().name());
 	}
 
 	@Override

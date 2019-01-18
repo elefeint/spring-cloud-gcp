@@ -1,14 +1,24 @@
 = Spring Cloud GCP release process
 
-The actual release process is triggered by the release admin.
+The actual release process is triggered by the release admin and happens together with the rest of the Spring Cloud release.
 In order to simplify that process, here is a list of prerequisites to be performed before asking the release admin to run the release scripts.
 
-1. Comment out the `spring-cloud-gcp-samples` module from the root `pom.xml` file, so that the samples aren't released.
+. Ensure that modules that shouldn't be released have the `maven-deploy-plugin` configuration set to `<skip>true</skip>`.
+For GA releases this should be configured under the `central` Maven profile.
 
-2. Comment out any non-GA modules from the `pom.xml` file.
+	<build>
+		<plugins>
+			<plugin>
+				<artifactId>maven-deploy-plugin</artifactId>
+				<configuration>
+					<skip>true</skip>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
 
-3. Manually change the value of `TRACKING_HEADER_PROJECT_VERSION` in link:spring-cloud-gcp-core/src/main/java/org/springframework/cloud/gcp/core/UsageTrackingHeaderProvider.java[`UsageTrackingHeaderProvider`] to the version being released from the interim `BUILD-SNAPSHOT` value.
+. Wait for the release scripts to have been run by the release admin.
 
-4. Change the value of the `<version>` elements of the `pom.xml` of each module in the project being released to the name of the version being released from the interim `BUILD-SNAPSHOT` values. This can be done manually or using the https://www.mojohaus.org/versions-maven-plugin/set-mojo.html[mvn versions:set] command.
+. Make sure that the release tag was automatically added by the release process.
 
-After the release scripts have been run by the release admin, revert the version names from steps 3 and 4 to the interim `BUILD-SNAPSHOT` name.
+. Make sure that the link:https://github.com/spring-io/initializr/blob/master/initializr-service/src/main/resources/application.yml[Spring Boot Initializr] is updated to support the new version of Spring Cloud GCP.

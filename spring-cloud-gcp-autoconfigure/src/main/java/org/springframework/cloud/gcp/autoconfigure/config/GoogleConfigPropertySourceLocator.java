@@ -1,17 +1,17 @@
 /*
- *  Copyright 2017-2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.autoconfigure.config;
@@ -27,7 +27,7 @@ import com.google.auth.Credentials;
 import org.springframework.cloud.bootstrap.config.PropertySourceLocator;
 import org.springframework.cloud.gcp.core.DefaultCredentialsProvider;
 import org.springframework.cloud.gcp.core.GcpProjectIdProvider;
-import org.springframework.cloud.gcp.core.UsageTrackingHeaderProvider;
+import org.springframework.cloud.gcp.core.UserAgentHeaderProvider;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.PropertySource;
@@ -82,7 +82,7 @@ public class GoogleConfigPropertySourceLocator implements PropertySourceLocator 
 			this.credentials = gcpConfigProperties.getCredentials().hasKey()
 					? new DefaultCredentialsProvider(gcpConfigProperties).getCredentials()
 					: credentialsProvider.getCredentials();
-			this.projectId = gcpConfigProperties.getProjectId() != null
+			this.projectId = (gcpConfigProperties.getProjectId() != null)
 					? gcpConfigProperties.getProjectId()
 					: projectIdProvider.getProjectId();
 			Assert.notNull(this.credentials, "Credentials must not be null");
@@ -103,12 +103,12 @@ public class GoogleConfigPropertySourceLocator implements PropertySourceLocator 
 		Map<String, List<String>> credentialHeaders = this.credentials.getRequestMetadata();
 		Assert.notNull(credentialHeaders, "No valid credential header(s) found");
 
-		credentialHeaders.forEach((key, values) -> values.forEach(value -> headers.add(key, value)));
+		credentialHeaders.forEach((key, values) -> values.forEach((value) -> headers.add(key, value)));
 
 		Assert.isTrue(headers.containsKey(AUTHORIZATION_HEADER), "Authorization header required");
 
-		// Adds usage tracking header.
-		new UsageTrackingHeaderProvider(this.getClass()).getHeaders().forEach(headers::add);
+		// Adds product version header for usage metrics
+		new UserAgentHeaderProvider(this.getClass()).getHeaders().forEach(headers::add);
 
 		return new HttpEntity<>(headers);
 	}
@@ -140,10 +140,10 @@ public class GoogleConfigPropertySourceLocator implements PropertySourceLocator 
 			Assert.notNull(googleConfigEnvironment, "Configuration not in expected format.");
 			config = googleConfigEnvironment.getConfig();
 		}
-		catch (Exception e) {
+		catch (Exception ex) {
 			String message = String.format("Error loading configuration for %s/%s_%s", this.projectId,
 					this.name, this.profile);
-			throw new RuntimeException(message, e);
+			throw new RuntimeException(message, ex);
 		}
 		return new MapPropertySource(PROPERTY_SOURCE_NAME, config);
 	}

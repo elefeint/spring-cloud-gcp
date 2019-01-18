@@ -1,29 +1,29 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
 import com.google.cloud.spanner.Key;
 import com.google.cloud.spanner.KeySet;
 import com.google.cloud.spanner.Statement;
+import com.google.cloud.spanner.Struct;
 
 /**
  * Defines operations available to use with Spanner.
@@ -34,6 +34,14 @@ import com.google.cloud.spanner.Statement;
  * @since 1.1
  */
 public interface SpannerOperations {
+
+	/**
+	 * Execute a DML statement on Cloud Spanner. If this is not performed in a transaction
+	 * then it is done in partitioned-mode.
+	 * @param statement the DML statement to execute.
+	 * @return the number of rows affected.
+	 */
+	long executeDmlStatement(Statement statement);
 
 	/**
 	 * Finds a single stored object using a key.
@@ -49,7 +57,7 @@ public interface SpannerOperations {
 	 * Finds a single stored object using a key.
 	 * @param entityClass the type of the object to retrieve.
 	 * @param key the key of the object.
-	 * @param options Cloud Spanner read options with which to conduct the read operation.
+	 * @param options the Cloud Spanner read options with which to conduct the read operation.
 	 * @param <T> the type of the object to retrieve.
 	 * @return an object of the requested type. Returns null if no object could be found
 	 * stored with the given key.
@@ -60,10 +68,10 @@ public interface SpannerOperations {
 	 * Finds objects stored from their keys.
 	 * @param entityClass the type of the object to retrieve.
 	 * @param keys the keys of the objects to retrieve.
-	 * @param options Cloud Spanner read options with which to conduct the read operation.
+	 * @param options the Cloud Spanner read options with which to conduct the read operation.
 	 * @param <T> the type of the object to retrieve.
-	 * @return a list of objects that could be found using the given keys. If no keys
-	 * could be found the list will be empty.
+	 * @return a list of objects that could be found using the given keys. If no keys could be
+	 * found the list will be empty.
 	 */
 	<T> List<T> read(Class<T> entityClass, KeySet keys, SpannerReadOptions options);
 
@@ -72,40 +80,38 @@ public interface SpannerOperations {
 	 * @param entityClass the type of the object to retrieve.
 	 * @param keys the keys of the objects to retrieve.
 	 * @param <T> the type of the object to retrieve.
-	 * @return a list of objects that could be found using the given keys. If no keys
-	 * could be found the list will be empty.
+	 * @return a list of objects that could be found using the given keys. If no keys could be
+	 * found the list will be empty.
 	 */
 	<T> List<T> read(Class<T> entityClass, KeySet keys);
 
 	/**
-	 * Finds objects by using an SQL statement.
-	 * @param entityClass the type of object to retrieve.
-	 * @param sql the SQL string to execute. this string can have Cloud Spanner param tags.
-	 * @param tags the names of the tags to use
-	 * @param params the values to attach those tags, in the same order.
-	 * @param options Cloud Spanner read options with which to conduct the read operation.
-	 * @param <T> the type of object to retrieve.
-	 * @return a list of the objects found. If no keys could be found the list will be
-	 * empty.
+	 * Executes a given query string with tags and parameters and applies a given function to
+	 * each row of the result.
+	 * @param rowFunc the function to apply to each row of the result.
+	 * @param statement the SQL statement used to select the objects.
+	 * @param options the options with which to run this query.
+	 * @param <A> the type to convert each row Struct into.
+	 * @return a list of the rows each transformed with the given function.
 	 */
-	<T> List<T> query(Class<T> entityClass, String sql, List<String> tags,
-			Object[] params,
+	<A> List<A> query(Function<Struct, A> rowFunc, Statement statement,
 			SpannerQueryOptions options);
 
 	/**
 	 * Finds objects by using an SQL statement.
 	 * @param entityClass the type of object to retrieve.
 	 * @param statement the SQL statement used to select the objects.
+	 * @param options the Cloud Spanner read options with which to conduct the read operation.
 	 * @param <T> the type of object to retrieve.
-	 * @return a list of the objects found. If no keys could be found the list will be
-	 * empty.
+	 * @return a list of the objects found. If no keys could be found the list will be empty.
 	 */
-	<T> List<T> query(Class<T> entityClass, Statement statement);
+	<T> List<T> query(Class<T> entityClass, Statement statement,
+			SpannerQueryOptions options);
 
 	/**
 	 * Finds all objects of the given type.
 	 * @param entityClass the type of the object to retrieve.
-	 * @param options Cloud Spanner read options with which to conduct the read operation.
+	 * @param options the Cloud Spanner read options with which to conduct the read operation.
 	 * @param <T> the type of the object to retrieve.
 	 * @return a list of all objects stored of the given type. If there are no objects an
 	 * empty list is returned.
@@ -124,12 +130,12 @@ public interface SpannerOperations {
 	/**
 	 * Finds all objects of the given type.
 	 * @param entityClass the type of the object to retrieve.
-	 * @param options Cloud Spanner query options with which to conduct the query operation.
+	 * @param options the Cloud Spanner query options with which to conduct the query operation.
 	 * @param <T> the type of the object to retrieve.
 	 * @return a list of all objects stored of the given type. If there are no objects an
 	 * empty list is returned.
 	 */
-	<T> List<T> queryAll(Class<T> entityClass, SpannerQueryOptions options);
+	<T> List<T> queryAll(Class<T> entityClass, SpannerPageableQueryOptions options);
 
 	/**
 	 * Deletes an object based on a key.
@@ -184,19 +190,19 @@ public interface SpannerOperations {
 	/**
 	 * Update an object in storage.
 	 * @param object the object to update.
-	 * @param includeColumns the columns to upsert. if none are given then all columns are
-	 * used
+	 * @param includeProperties the properties to upsert. if none are given then all
+	 *     properties are used
 	 */
-	void update(Object object, String... includeColumns);
+	void update(Object object, String... includeProperties);
 
 	/**
 	 * Update an object in storage.
 	 * @param object the object to update.
-	 * @param includeColumns the columns to update. If null or an empty Optional is given, then
-	 * all columns are used. Note that an Optional occupied by an empty Set means that no columns
-	 * will be used.
+	 * @param includeProperties the properties to update. If null is given, then all
+	 *     properties are used. Note that an empty {@code Set} means that no properties will
+	 *     be used.
 	 */
-	void update(Object object, Optional<Set<String>> includeColumns);
+	void update(Object object, Set<String> includeProperties);
 
 	/**
 	 * Update or insert an object into storage.
@@ -213,19 +219,19 @@ public interface SpannerOperations {
 	/**
 	 * Update or insert an object into storage.
 	 * @param object the object to update or insert.
-	 * @param includeColumns the columns to upsert. if none are given then all columns are
-	 * upserted.
+	 * @param includeProperties the properties to upsert. if none are given then all
+	 *     properties are upserted.
 	 */
-	void upsert(Object object, String... includeColumns);
+	void upsert(Object object, String... includeProperties);
 
 	/**
 	 * Update or insert an object into storage.
 	 * @param object the object to update or insert.
-	 * @param includeColumns the columns to upsert. If null or an empty Optional is given, then
-	 * all columns are used. Note that an Optional occupied by an empty Set means that no columns
-	 * will be used.
+	 * @param includeProperties the properties to update. If null is given, then all
+	 *     properties are used. Note that an empty {@code Set} means that no properties will
+	 *     be used.
 	 */
-	void upsert(Object object, Optional<Set<String>> includeColumns);
+	void upsert(Object object, Set<String> includeProperties);
 
 	/**
 	 * Count how many objects are stored of the given type.
@@ -237,7 +243,7 @@ public interface SpannerOperations {
 	/**
 	 * Performs multiple read and write operations in a single transaction.
 	 * @param operations the function representing the operations to perform using a
-	 * SpannerOperations based on a single transaction.
+	 *     SpannerOperations based on a single transaction.
 	 * @param <T> the final return type of the operations.
 	 * @return the final result of the transaction.
 	 */
@@ -246,7 +252,7 @@ public interface SpannerOperations {
 	/**
 	 * Performs multiple read-only operations in a single transaction.
 	 * @param operations the function representing the operations to perform using a
-	 * SpannerOperations based on a single transaction.
+	 *     SpannerOperations based on a single transaction.
 	 * @param readOptions allows the user to specify staleness for the read transaction
 	 * @param <T> the final return type of the operations.
 	 * @return the final result of the transaction.

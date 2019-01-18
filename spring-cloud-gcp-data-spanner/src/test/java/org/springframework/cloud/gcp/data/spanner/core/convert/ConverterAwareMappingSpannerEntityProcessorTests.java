@@ -1,17 +1,17 @@
 /*
- *  Copyright 2018 original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.springframework.cloud.gcp.data.spanner.core.convert;
@@ -27,6 +27,7 @@ import com.google.cloud.Timestamp;
 import com.google.cloud.spanner.ResultSet;
 import com.google.cloud.spanner.Struct;
 import com.google.cloud.spanner.Value;
+import org.assertj.core.data.Offset;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -35,21 +36,21 @@ import org.springframework.cloud.gcp.data.spanner.core.mapping.SpannerMappingCon
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.lang.Nullable;
 
-import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
+ * Tests for Spanner mapping and converting.
+ *
  * @author Chengyuan Zhao
  * @author Balint Pato
  */
 public class ConverterAwareMappingSpannerEntityProcessorTests {
+
+	private static final Offset<Double> DELTA = Offset.offset(0.00001);
 
 	private static final Converter<SpannerType, JavaType> SPANNER_TO_JAVA = new Converter<SpannerType, JavaType>() {
 		@Nullable
@@ -102,8 +103,8 @@ public class ConverterAwareMappingSpannerEntityProcessorTests {
 		SpannerWriteConverter writeConverter = converter.getWriteConverter();
 		SpannerReadConverter readConverter = converter.getReadConverter();
 
-		assertTrue(writeConverter.canConvert(javaType, spannerType));
-		assertTrue(readConverter.canConvert(spannerType, javaType));
+		assertThat(writeConverter.canConvert(javaType, spannerType)).isTrue();
+		assertThat(readConverter.canConvert(spannerType, javaType)).isTrue();
 	}
 
 	@Test
@@ -132,7 +133,7 @@ public class ConverterAwareMappingSpannerEntityProcessorTests {
 		Struct struct1 = Struct.newBuilder().set("id").to(Value.string("key1"))
 				.set("id2").to(Value.string("key2")).set("id3").to(Value.string("key3"))
 				.set("id4").to(Value.string("key4"))
-				.set("custom_col").to(Value.string("string1")).set("booleanField")
+				.set("custom_col").to(Value.string("WHITE")).set("booleanField")
 				.to(Value.bool(true)).set("intField").to(Value.int64(123L))
 				.set("intField2").to(Value.int64(333L))
 				.set("longField").to(Value.int64(3L)).set("doubleField")
@@ -148,12 +149,13 @@ public class ConverterAwareMappingSpannerEntityProcessorTests {
 				.to(Value.date(Date.fromYearMonthDay(2018, 11, 22))).set("timestampField")
 				.to(Value.timestamp(Timestamp.ofTimeMicroseconds(333))).set("bytes")
 				.to(Value.bytes(ByteArray.copyFrom("string1"))).set("momentsInTime")
-				.to(Value.timestampArray(timestamps)).build();
+				.to(Value.timestampArray(timestamps))
+				.set("commitTimestamp").to(Value.timestamp(Timestamp.ofTimeMicroseconds(1))).build();
 
 		Struct struct2 = Struct.newBuilder().set("id").to(Value.string("key12"))
 				.set("id2").to(Value.string("key22")).set("id3").to(Value.string("key32"))
 				.set("id4").to(Value.string("key42"))
-				.set("custom_col").to(Value.string("string2")).set("booleanField")
+				.set("custom_col").to(Value.string("BLACK")).set("booleanField")
 				.to(Value.bool(true)).set("intField").to(Value.int64(222L))
 				.set("intField2").to(Value.int64(555L))
 				.set("longField").to(Value.int64(5L)).set("doubleField")
@@ -169,58 +171,61 @@ public class ConverterAwareMappingSpannerEntityProcessorTests {
 				.to(Value.date(Date.fromYearMonthDay(2019, 11, 22))).set("timestampField")
 				.to(Value.timestamp(Timestamp.ofTimeMicroseconds(555)))
 				.set("momentsInTime").to(Value.timestampArray(timestamps)).set("bytes")
-				.to(Value.bytes(ByteArray.copyFrom("string2"))).build();
+				.to(Value.bytes(ByteArray.copyFrom("string2")))
+				.set("commitTimestamp").to(Value.timestamp(Timestamp.ofTimeMicroseconds(1))).build();
 
 		MockResults mockResults = new MockResults();
 		mockResults.structs = Arrays.asList(struct1, struct2);
 
 		ResultSet results = mock(ResultSet.class);
-		when(results.next()).thenAnswer(invocation -> mockResults.next());
+		when(results.next()).thenAnswer((invocation) -> mockResults.next());
 		when(results.getCurrentRowAsStruct())
-				.thenAnswer(invocation -> mockResults.getCurrent());
+				.thenAnswer((invocation) -> mockResults.getCurrent());
 
 		List<TestEntity> entities = this.spannerEntityProcessor.mapToList(results,
 				TestEntity.class);
 
 		verify(results, times(1)).close();
 
-		assertEquals(2, entities.size());
+		assertThat(entities).hasSize(2);
 
 		TestEntity t1 = entities.get(0);
 		TestEntity t2 = entities.get(1);
 
-		assertEquals("key1", t1.id);
-		assertEquals("key2", t1.testEmbeddedColumns.id2);
-		assertEquals("key3", t1.testEmbeddedColumns.id3);
-		assertEquals("key4", t1.id4);
-		assertEquals("string1", t1.stringField);
-		assertEquals(true, t1.booleanField);
-		assertEquals(123, t1.intField);
-		assertEquals(333, t1.testEmbeddedColumns.intField2);
-		assertEquals(3L, t1.longField);
-		assertEquals(3.33, t1.doubleField, 0.00001);
-		assertEquals(3, t1.doubleArray.length);
-		assertEquals(2018, t1.dateField.getYear());
-		assertEquals(instants, t1.momentsInTime);
-		assertEquals(ByteArray.copyFrom("string1"), t1.bytes);
+		assertThat(t1.id).isEqualTo("key1");
+		assertThat(t1.testEmbeddedColumns.id2).isEqualTo("key2");
+		assertThat(t1.testEmbeddedColumns.id3).isEqualTo("key3");
+		assertThat(t1.id4).isEqualTo("key4");
+		assertThat(t1.enumField).isEqualTo(TestEntity.Color.WHITE);
+		assertThat(t1.booleanField).isEqualTo(true);
+		assertThat(t1.intField).isEqualTo(123);
+		assertThat(t1.testEmbeddedColumns.intField2).isEqualTo(333);
+		assertThat(t1.longField).isEqualTo(3L);
+		assertThat(t1.doubleField).isEqualTo(3.33, DELTA);
+		assertThat(t1.doubleArray.length).isEqualTo(3);
+		assertThat(t1.dateField.getYear()).isEqualTo(2018);
+		assertThat(t1.momentsInTime).isEqualTo(instants);
+		assertThat(t1.bytes).isEqualTo(ByteArray.copyFrom("string1"));
+		assertThat(t1.commitTimestamp).isEqualTo(Timestamp.ofTimeMicroseconds(1));
 
-		assertEquals("key12", t2.id);
-		assertEquals("key22", t2.testEmbeddedColumns.id2);
-		assertEquals("key32", t2.testEmbeddedColumns.id3);
-		assertEquals("key42", t2.id4);
-		assertEquals("string2", t2.stringField);
-		assertEquals(true, t2.booleanField);
-		assertEquals(222, t2.intField);
-		assertEquals(555, t2.testEmbeddedColumns.intField2);
-		assertEquals(5L, t2.longField);
-		assertEquals(5.55, t2.doubleField, 0.00001);
-		assertEquals(2, t2.doubleArray.length);
-		assertEquals(2019, t2.dateField.getYear());
-		assertEquals(1, t2.doubleList.size());
-		assertEquals(3.33, t2.doubleList.get(0), 0.000001);
-		assertEquals(instants, t2.momentsInTime);
-		assertThat(t2.stringList, containsInAnyOrder("string"));
-		assertEquals(ByteArray.copyFrom("string2"), t2.bytes);
+		assertThat(t2.id).isEqualTo("key12");
+		assertThat(t2.testEmbeddedColumns.id2).isEqualTo("key22");
+		assertThat(t2.testEmbeddedColumns.id3).isEqualTo("key32");
+		assertThat(t2.id4).isEqualTo("key42");
+		assertThat(t2.enumField).isEqualTo(TestEntity.Color.BLACK);
+		assertThat(t2.booleanField).isEqualTo(true);
+		assertThat(t2.intField).isEqualTo(222);
+		assertThat(t2.testEmbeddedColumns.intField2).isEqualTo(555);
+		assertThat(t2.longField).isEqualTo(5L);
+		assertThat(t2.doubleField).isEqualTo(5.55, DELTA);
+		assertThat(t2.doubleArray.length).isEqualTo(2);
+		assertThat(t2.dateField.getYear()).isEqualTo(2019);
+		assertThat(t2.doubleList).hasSize(1);
+		assertThat(t2.doubleList.get(0)).isEqualTo(3.33, DELTA);
+		assertThat(t2.momentsInTime).isEqualTo(instants);
+		assertThat(t2.stringList).containsExactly("string");
+		assertThat(t2.bytes).isEqualTo(ByteArray.copyFrom("string2"));
+		assertThat(t2.commitTimestamp).isEqualTo(Timestamp.ofTimeMicroseconds(1));
 	}
 
 	@Test
@@ -231,12 +236,12 @@ public class ConverterAwareMappingSpannerEntityProcessorTests {
 		stringList.add("string");
 
 		Struct struct1 = Struct.newBuilder().set("id").to(Value.string("key1"))
-				.set("custom_col").to(Value.string("string1")).set("doubleList")
+				.set("custom_col").to(Value.string("WHITE")).set("doubleList")
 				.to(Value.float64Array(doubleList)).set("stringList")
 				.to(Value.stringArray(stringList)).build();
 
 		Struct struct2 = Struct.newBuilder().set("id").to(Value.string("key2"))
-				.set("custom_col").to(Value.string("string2")).set("doubleList")
+				.set("custom_col").to(Value.string("BLACK")).set("doubleList")
 				.to(Value.float64Array(doubleList)).set("stringList")
 				.to(Value.stringArray(stringList)).build();
 
@@ -244,31 +249,31 @@ public class ConverterAwareMappingSpannerEntityProcessorTests {
 		mockResults.structs = Arrays.asList(struct1, struct2);
 
 		ResultSet results = mock(ResultSet.class);
-		when(results.next()).thenAnswer(invocation -> mockResults.next());
+		when(results.next()).thenAnswer((invocation) -> mockResults.next());
 		when(results.getCurrentRowAsStruct())
-				.thenAnswer(invocation -> mockResults.getCurrent());
+				.thenAnswer((invocation) -> mockResults.getCurrent());
 
 		List<TestEntity> entities = this.spannerEntityProcessor.mapToList(results,
 				TestEntity.class, "id", "custom_col");
 
 		verify(results, times(1)).close();
 
-		assertEquals(2, entities.size());
+		assertThat(entities).hasSize(2);
 
 		TestEntity t1 = entities.get(0);
 		TestEntity t2 = entities.get(1);
 
-		assertEquals("key1", t1.id);
-		assertEquals("string1", t1.stringField);
+		assertThat(t1.id).isEqualTo("key1");
+		assertThat(t1.enumField).isEqualTo(TestEntity.Color.WHITE);
 
 		// This should not have been set
-		assertNull(t1.doubleList);
+		assertThat(t1.doubleList).isNull();
 
-		assertEquals("key2", t2.id);
-		assertEquals("string2", t2.stringField);
+		assertThat(t2.id).isEqualTo("key2");
+		assertThat(t2.enumField).isEqualTo(TestEntity.Color.BLACK);
 
 		// This should not have been set
-		assertNull(t2.stringList);
+		assertThat(t2.stringList).isNull();
 	}
 
 	private interface SpannerType {
@@ -277,6 +282,9 @@ public class ConverterAwareMappingSpannerEntityProcessorTests {
 	private interface JavaType {
 	}
 
+	/**
+	 * A mock results class for mocked queries.
+	 */
 	static class MockResults {
 		List<Struct> structs;
 
